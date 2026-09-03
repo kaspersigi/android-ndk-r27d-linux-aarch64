@@ -143,6 +143,26 @@ if (( ${#missing_commands[@]} != 0 )); then
     exit 1
 fi
 
+# qemu-aarch64 can start a host tool directly, but Clang also execs AArch64
+# clang-18 and ld.lld child processes. Verify transparent binfmt execution
+# before starting the multi-hour build so a missing qemu-user-binfmt setup
+# fails immediately.
+qemu_exec_probe=$(mktemp "${TMPDIR:-/tmp}/ndk-qemu-exec-probe.XXXXXX")
+cleanup_qemu_exec_probe() {
+    rm -f -- "$qemu_exec_probe"
+}
+trap cleanup_qemu_exec_probe EXIT
+aarch64-linux-gnu-gcc "$project_root/tests/qemu_exec_probe.c" \
+    -o "$qemu_exec_probe"
+if ! QEMU_LD_PREFIX=/usr/aarch64-linux-gnu qemu-aarch64 \
+    "$qemu_exec_probe" "$qemu_exec_probe" --child; then
+    echo "error: AArch64 child-process execution is unavailable" >&2
+    echo "       install qemu-user-binfmt with ./scripts/resolute-install-deps.sh" >&2
+    exit 1
+fi
+rm -f -- "$qemu_exec_probe"
+trap - EXIT
+
 if [[ "$clean" == "1" ]]; then
     echo "Removing generated sources, build trees, outputs, and packages..."
     rm -rf -- \

@@ -137,6 +137,8 @@ tag changes are maintained as reviewable files under [`patches/`](patches/).
 [`scripts/validate-ndk.sh`](scripts/validate-ndk.sh) runs natively on AArch64
 or through QEMU on the supported x86_64 build host. It verifies:
 
+- transparent AArch64 child-process execution through `qemu-user-binfmt`,
+  which Clang needs to launch its own `clang-18` and `ld.lld` binaries;
 - the normalized package inventory, entry types, permissions, and symlink
   targets against the official Linux x86_64 package;
 - that Linux host ELF files and host archive members are AArch64;
@@ -149,10 +151,9 @@ or through QEMU on the supported x86_64 build host. It verifies:
 - Android CMake toolchain integration for `arm64-v8a`;
 - `ndk-build` output for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
 
-For the official r27d reference used by this project, the normalized reference
-and candidate inventories each contain 9,279 entries. This is a one-for-one
-layout check after host-name normalization, not a claim that rebuilt host
-binaries are byte-identical to Google's x86_64 binaries.
+The reference and candidate entry counts must match exactly. This is a
+one-for-one layout check after host-name normalization, not a claim that rebuilt
+host binaries are byte-identical to Google's x86_64 binaries.
 
 ## GitHub Actions release
 

@@ -30,6 +30,13 @@ case $(uname -m) in
         command -v aarch64-linux-gnu-gcc >/dev/null
         aarch64-linux-gnu-gcc "$project_root/tests/qemu_exec_probe.c" \
             -o "$validation_root/qemu-exec-probe"
+        if ! QEMU_LD_PREFIX="$qemu_prefix" qemu-aarch64 \
+            "$validation_root/qemu-exec-probe" \
+            "$validation_root/qemu-exec-probe" --child; then
+            echo "error: AArch64 child-process execution is unavailable" >&2
+            echo "       install qemu-user-binfmt with ./scripts/resolute-install-deps.sh" >&2
+            exit 1
+        fi
         host_run() { QEMU_LD_PREFIX="$qemu_prefix" qemu-aarch64 "$@"; }
         ndk_build_run() {
             QEMU_LD_PREFIX="$qemu_prefix" qemu-aarch64 \

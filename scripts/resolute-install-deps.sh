@@ -83,6 +83,7 @@ packages=(
     po4a
     python3
     qemu-user
+    qemu-user-binfmt
     ripgrep
     rsync
     tar
