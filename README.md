@@ -168,8 +168,8 @@ binaries are byte-identical to Google's x86_64 binaries.
 Example release tag:
 
 ```bash
-git tag v27d-aarch64.1
-git push origin v27d-aarch64.1
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 The published assets are:
