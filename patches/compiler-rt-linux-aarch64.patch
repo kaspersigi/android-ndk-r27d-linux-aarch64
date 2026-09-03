@@ -1,0 +1,68 @@
+diff --git a/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake b/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
+index 416777171..e70554c18 100644
+--- a/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
++++ b/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
+@@ -61,7 +61,9 @@ endif()
+ set(ALL_MSAN_SUPPORTED_ARCH ${X86_64} ${MIPS64} ${ARM64} ${PPC64} ${S390X}
+     ${LOONGARCH64})
+ set(ALL_HWASAN_SUPPORTED_ARCH ${X86_64} ${ARM64} ${RISCV64})
+-set(ALL_MEMPROF_SUPPORTED_ARCH ${X86_64})
++# The prebuilt Linux host toolchain publishes the MemProf runtime inventory for
++# every host architecture. Build that inventory for AArch64 as well.
++set(ALL_MEMPROF_SUPPORTED_ARCH ${X86_64} ${ARM64})
+ set(ALL_PROFILE_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${PPC32} ${PPC64}
+     ${MIPS32} ${MIPS64} ${S390X} ${SPARC} ${SPARCV9} ${HEXAGON}
+     ${RISCV32} ${RISCV64} ${LOONGARCH64})
+diff --git a/compiler-rt/lib/memprof/memprof_allocator.h b/compiler-rt/lib/memprof/memprof_allocator.h
+index 14c61c732..43f342fac 100644
+--- a/compiler-rt/lib/memprof/memprof_allocator.h
++++ b/compiler-rt/lib/memprof/memprof_allocator.h
+@@ -20,7 +20,7 @@
+ #include "sanitizer_common/sanitizer_allocator.h"
+ #include "sanitizer_common/sanitizer_list.h"
+ 
+-#if !defined(__x86_64__)
++#if !defined(__x86_64__) && !defined(__aarch64__)
+ #error Unsupported platform
+ #endif
+ #if !SANITIZER_CAN_USE_ALLOCATOR64
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cpp
+index 6d61d276d..277463d05 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.cpp
+@@ -480,7 +480,14 @@ unsigned struct_ElfW_Phdr_sz = sizeof(Elf_Phdr);
+   unsigned struct_mtpos_sz = sizeof(struct mtpos);
+   unsigned struct_rtentry_sz = sizeof(struct rtentry);
+ #if SANITIZER_GLIBC || SANITIZER_ANDROID
++#if defined(__aarch64__) && SANITIZER_GLIBC
++  // glibc 2.42 no longer installs the legacy termio.h declaration. The
++  // Linux UAPI termio layout on AArch64 is four 16-bit flags, one line byte,
++  // and NCC (8) control bytes, rounded to 18 bytes.
++  unsigned struct_termio_sz = 18;
++#else
+   unsigned struct_termio_sz = sizeof(struct termio);
++#endif
+ #endif
+   unsigned struct_vt_consize_sz = sizeof(struct vt_consize);
+   unsigned struct_vt_sizes_sz = sizeof(struct vt_sizes);
+diff --git a/compiler-rt/lib/tsan/dd/CMakeLists.txt b/compiler-rt/lib/tsan/dd/CMakeLists.txt
+index a7359c573..3d73a41b7 100644
+--- a/compiler-rt/lib/tsan/dd/CMakeLists.txt
++++ b/compiler-rt/lib/tsan/dd/CMakeLists.txt
+@@ -22,9 +22,13 @@ append_list_if(COMPILER_RT_HAS_LIBPTHREAD pthread DD_LINKLIBS)
+ add_custom_target(dd)
+ set_target_properties(dd PROPERTIES FOLDER "Compiler-RT Misc")
+ 
+-# Deadlock detector is currently supported on 64-bit Linux only.
+-if(CAN_TARGET_x86_64 AND UNIX AND NOT APPLE AND NOT ANDROID)
+-  set(arch "x86_64")
++# Deadlock detector is built for the selected 64-bit Linux host.
++if((CAN_TARGET_x86_64 OR CAN_TARGET_aarch64) AND UNIX AND NOT APPLE AND NOT ANDROID)
++  if(CAN_TARGET_aarch64)
++    set(arch "aarch64")
++  else()
++    set(arch "x86_64")
++  endif()
+   add_compiler_rt_runtime(clang_rt.dd
+     STATIC
+     ARCHS ${arch}

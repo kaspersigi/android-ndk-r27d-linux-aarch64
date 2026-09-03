@@ -1,0 +1,46 @@
+diff --git a/setup.py b/setup.py
+index d85bf6112c..a625619a5e 100644
+--- a/setup.py
++++ b/setup.py
+@@ -1121,6 +1121,8 @@ class PyBuildExt(build_ext):
+         curses_defines = []
+         curses_includes = []
+         panel_library = 'panel'
++        static_dep_dir = os.environ.get('PYTHON_NDK_STATIC_DEPS')
++        curses_objects = []
+         if curses_library == 'ncursesw':
+             curses_defines.append(('HAVE_NCURSESW', '1'))
+             if not CROSS_COMPILING:
+@@ -1144,10 +1146,14 @@ class PyBuildExt(build_ext):
+         curses_enabled = True
+         if curses_library.startswith('ncurses'):
+             curses_libs = [curses_library]
++            if static_dep_dir:
++                curses_objects = [os.path.join(static_dep_dir, f'lib{curses_library}.a')]
++                curses_libs = []
+             self.add(Extension('_curses', ['_cursesmodule.c'],
+                                include_dirs=curses_includes,
+                                define_macros=curses_defines,
+-                               libraries=curses_libs))
++                               libraries=curses_libs, extra_objects=curses_objects))
+         elif curses_library == 'curses' and not MACOS:
+                 # OSX has an old Berkeley curses, not good enough for
+                 # the _curses module.
+@@ -1171,10 +1177,16 @@ class PyBuildExt(build_ext):
+         skip_curses_panel = True if AIX else False
+         if (curses_enabled and not skip_curses_panel and
+                 self.compiler.find_library_file(self.lib_dirs, panel_library)):
++            panel_libs = [panel_library, *curses_libs]
++            panel_objects = []
++            if static_dep_dir:
++                panel_libs = []
++                panel_objects = [os.path.join(static_dep_dir, f'lib{panel_library}.a'),
++                                 *curses_objects]
+             self.add(Extension('_curses_panel', ['_curses_panel.c'],
+                            include_dirs=curses_includes,
+                            define_macros=curses_defines,
+-                           libraries=[panel_library, *curses_libs]))
++                           libraries=panel_libs, extra_objects=panel_objects))
+         elif not skip_curses_panel:
+             self.missing.append('_curses_panel')
+ 

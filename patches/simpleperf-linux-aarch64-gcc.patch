@@ -1,0 +1,71 @@
+diff --git a/simpleperf/event_attr.h b/simpleperf/event_attr.h
+index 5521f32..16adc56 100644
+--- a/simpleperf/event_attr.h
++++ b/simpleperf/event_attr.h
+@@ -20,6 +20,7 @@
+ #include <stddef.h>
+ #include <string.h>
+ 
++#include <cstdint>
+ #include <string>
+ #include <vector>
+ 
+diff --git a/simpleperf/event_type.h b/simpleperf/event_type.h
+index 14863ca..133c1f3 100644
+--- a/simpleperf/event_type.h
++++ b/simpleperf/event_type.h
+@@ -19,6 +19,7 @@
+ 
+ #include <stdint.h>
+ #include <strings.h>
++#include <functional>
+ #include <memory>
+ #include <set>
+ #include <string>
+diff --git a/simpleperf/utils.h b/simpleperf/utils.h
+index 0409387..2414daa 100644
+--- a/simpleperf/utils.h
++++ b/simpleperf/utils.h
+@@ -78,7 +78,7 @@ class OneTimeFreeAllocator {
+ 
+ class LineReader {
+  public:
+-  explicit LineReader(std::string_view file_path) : ifs_(file_path) {}
++  explicit LineReader(std::string_view file_path) : ifs_(std::string(file_path)) {}
+   // Return true if open file successfully.
+   bool Ok() const { return ifs_.good(); }
+   // If available, return next line content with new line, otherwise return nullptr.
+diff --git a/simpleperf/read_elf.cpp b/simpleperf/read_elf.cpp
+index 59396a6..a2755ca 100644
+--- a/simpleperf/read_elf.cpp
++++ b/simpleperf/read_elf.cpp
+@@ -619,6 +619,7 @@ __attribute__((weak)) extern "C" int tigetnum(char*) {
+ // libsimpleperf_readelf.a may depend on __libcpp_verbose_abort(), which isn't available
+ // in the old libc++ used in platform. So define a custom version here, as instructed in
+ // https://github.com/llvm/llvm-project/blob/main/libcxx/docs/UsingLibcxx.rst.
++#if defined(_LIBCPP_VERSION)
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ void __libcpp_verbose_abort(char const* format, ...) {
+   va_list list;
+@@ -629,3 +630,4 @@ void __libcpp_verbose_abort(char const* format, ...) {
+   abort();
+ }
+ _LIBCPP_END_NAMESPACE_STD
++#endif
+diff --git a/simpleperf/read_elf.h b/simpleperf/read_elf.h
+index 3ade27f..da12815 100644
+--- a/simpleperf/read_elf.h
++++ b/simpleperf/read_elf.h
+@@ -17,9 +17,12 @@
+ #ifndef SIMPLE_PERF_READ_ELF_H_
+ #define SIMPLE_PERF_READ_ELF_H_
+ 
++#include <cstdint>
+ #include <functional>
++#include <memory>
+ #include <ostream>
+ #include <string>
++#include <vector>
+ #include "build_id.h"
+ 
+ namespace llvm {

@@ -1,0 +1,46 @@
+diff --git a/lldb/source/API/CMakeLists.txt b/lldb/source/API/CMakeLists.txt
+index 19f89e7b1..da1de816a 100644
+--- a/lldb/source/API/CMakeLists.txt
++++ b/lldb/source/API/CMakeLists.txt
+@@ -124,6 +124,13 @@ if(LLDB_ENABLE_PYTHON AND (BUILD_SHARED_LIBS OR LLVM_LINK_LLVM_DYLIB) AND UNIX A
+   set_property(TARGET liblldb APPEND PROPERTY INSTALL_RPATH "\$ORIGIN/../../../../lib${LLVM_LIBDIR_SUFFIX}")
+ endif()
+ 
++# When Python imports the _lldb symlink from
++# lib/python3.11/site-packages/lldb, $ORIGIN is the symlink directory. Keep the
++# bundled host dependencies discoverable from both that path and lib/.
++if(LLDB_ENABLE_PYTHON AND UNIX AND NOT APPLE)
++  set_property(TARGET liblldb APPEND PROPERTY INSTALL_RPATH "\$ORIGIN/../../..")
++endif()
++
+ if(Python3_RPATH)
+   set_property(TARGET liblldb APPEND PROPERTY INSTALL_RPATH "${Python3_RPATH}")
+   set_property(TARGET liblldb APPEND PROPERTY BUILD_RPATH   "${Python3_RPATH}")
+@@ -166,11 +173,6 @@ else()
+   set_source_files_properties(${lldb_lua_wrapper} PROPERTIES GENERATED ON)
+ endif()
+ 
+-set_target_properties(liblldb
+-  PROPERTIES
+-  VERSION ${LLDB_VERSION}
+-)
+-
+ target_compile_definitions(liblldb PRIVATE LLDB_IN_LIBLLDB)
+ if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
+   if (NOT LLDB_EXPORT_ALL_SYMBOLS)
+diff --git a/llvm/cmake/modules/AddLLVM.cmake b/llvm/cmake/modules/AddLLVM.cmake
+index 1c1eecf35..2554df760 100644
+--- a/llvm/cmake/modules/AddLLVM.cmake
++++ b/llvm/cmake/modules/AddLLVM.cmake
+@@ -637,7 +637,10 @@ function(llvm_add_library name)
+ 
+     # Set SOVERSION on shared libraries that lack explicit SONAME
+     # specifier, on *nix systems that are not Darwin.
+-    if(UNIX AND NOT APPLE AND NOT ARG_SONAME)
++    # Android's NDK exposes its LLDB shared objects with unversioned filenames
++    # and SONAMEs, unlike normal upstream LLVM installation layouts.
++    if(UNIX AND NOT APPLE AND NOT ARG_SONAME AND
++       NOT "${name}" MATCHES "^(lib)?lldb")
+       set_target_properties(${name}
+         PROPERTIES
+         # Since 4.0.0, the ABI version is indicated by the major version

@@ -1,0 +1,131 @@
+diff --git a/build/tools/ndk_bin_common.sh b/build/tools/ndk_bin_common.sh
+--- a/build/tools/ndk_bin_common.sh
++++ b/build/tools/ndk_bin_common.sh
+@@ -27,7 +27,7 @@ esac
+ 
+ HOST_ARCH=$(uname -m)
+ case $HOST_ARCH in
+-  arm64) HOST_ARCH=arm64;;
++  aarch64|arm64) HOST_ARCH=aarch64;;
+   i?86) HOST_ARCH=x86;;
+   x86_64|amd64) HOST_ARCH=x86_64;;
+   *) echo "ERROR: Unknown host CPU architecture: $HOST_ARCH"
+diff --git a/build/ndk-build b/build/ndk-build
+--- a/build/ndk-build
++++ b/build/ndk-build
+@@ -179,4 +179,4 @@ if [ "$NDK_ANALYZE" = 1 ]; then
+     NDK_ANALYZER_FLAGS=APP_CLANG_TIDY=true
+ fi
+ 
+-"$GNUMAKE" -O -f "$PROGDIR/core/build-local.mk" $NDK_ANALYZER_FLAGS "$@"
++HOST_ARCH="$HOST_ARCH" "$GNUMAKE" -O -f "$PROGDIR/core/build-local.mk" $NDK_ANALYZER_FLAGS "$@"
+diff --git a/build/cmake/android.toolchain.cmake b/build/cmake/android.toolchain.cmake
+--- a/build/cmake/android.toolchain.cmake
++++ b/build/cmake/android.toolchain.cmake
+@@ -250,6 +250,7 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+   ANDROID_ARM_NEON
+   ANDROID_CCACHE
+   ANDROID_CPP_FEATURES
++  ANDROID_HOST_TAG
+   ANDROID_DISABLE_FORMAT_STRING_CHECKS
+   ANDROID_PIE
+   ANDROID_PLATFORM
+@@ -272,8 +272,14 @@ endif()
+ # Exports compatible variables defined in exports.cmake.
+ set(_ANDROID_EXPORT_COMPATIBILITY_VARIABLES TRUE)
+ 
+-if(CMAKE_HOST_SYSTEM_NAME STREQUAL Linux)
+-  set(ANDROID_HOST_TAG linux-x86_64)
++if(DEFINED ANDROID_HOST_TAG)
++  # Allow cross-host smoke tests to select the packaged toolchain explicitly.
++elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Linux)
++  if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
++    set(ANDROID_HOST_TAG linux-aarch64)
++  else()
++    set(ANDROID_HOST_TAG linux-x86_64)
++  endif()
+ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Darwin)
+   set(ANDROID_HOST_TAG darwin-x86_64)
+ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
+diff --git a/build/cmake/android-legacy.toolchain.cmake b/build/cmake/android-legacy.toolchain.cmake
+--- a/build/cmake/android-legacy.toolchain.cmake
++++ b/build/cmake/android-legacy.toolchain.cmake
+@@ -269,6 +269,7 @@ set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+   ANDROID_ARM_NEON
+   ANDROID_CCACHE
+   ANDROID_CPP_FEATURES
++  ANDROID_HOST_TAG
+   ANDROID_DISABLE_FORMAT_STRING_CHECKS
+   ANDROID_PIE
+   ANDROID_PLATFORM
+@@ -372,8 +372,14 @@ else()
+   message(FATAL_ERROR "Invalid STL: ${ANDROID_STL}.")
+ endif()
+ 
+-if(CMAKE_HOST_SYSTEM_NAME STREQUAL Linux)
+-  set(ANDROID_HOST_TAG linux-x86_64)
++if(DEFINED ANDROID_HOST_TAG)
++  # Allow cross-host smoke tests to select the packaged toolchain explicitly.
++elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Linux)
++  if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
++    set(ANDROID_HOST_TAG linux-aarch64)
++  else()
++    set(ANDROID_HOST_TAG linux-x86_64)
++  endif()
+ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Darwin)
+   set(ANDROID_HOST_TAG darwin-x86_64)
+ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL Windows)
+diff --git a/build/tools/make_standalone_toolchain.py b/build/tools/make_standalone_toolchain.py
+--- a/build/tools/make_standalone_toolchain.py
++++ b/build/tools/make_standalone_toolchain.py
+@@ -24,6 +24,7 @@ import inspect
+ import json
+ import logging
+ import os
++import platform
+ import shutil
+ import stat
+ import sys
+@@ -82,6 +83,9 @@ def get_host_tag_or_die():
+     """Return the host tag for this platform. Die if not supported."""
+     if sys.platform.startswith("linux"):
+-        return "linux-x86_64"
++        machine = platform.machine().lower()
++        if machine in ("aarch64", "arm64"):
++            return "linux-aarch64"
++        return "linux-x86_64"
+     elif sys.platform == "darwin":
+         return "darwin-x86_64"
+     elif sys.platform == "win32" or sys.platform == "cygwin":
+diff --git a/ndk-gdb b/ndk-gdb
+--- a/ndk-gdb
++++ b/ndk-gdb
+@@ -1,3 +1,3 @@
+ #!/bin/sh
+ DIR=$(cd "$(dirname "$0")" && pwd)
+-"$DIR/prebuilt/linux-x86_64/bin/ndk-gdb" "$@"
++"$DIR/prebuilt/linux-aarch64/bin/ndk-gdb" "$@"
+diff --git a/ndk-lldb b/ndk-lldb
+--- a/ndk-lldb
++++ b/ndk-lldb
+@@ -1,3 +1,3 @@
+ #!/bin/sh
+ DIR=$(cd "$(dirname "$0")" && pwd)
+-"$DIR/prebuilt/linux-x86_64/bin/ndk-gdb" "$@"
++"$DIR/prebuilt/linux-aarch64/bin/ndk-gdb" "$@"
+diff --git a/ndk-stack b/ndk-stack
+--- a/ndk-stack
++++ b/ndk-stack
+@@ -1,3 +1,3 @@
+ #!/bin/sh
+ DIR=$(cd "$(dirname "$0")" && pwd)
+-"$DIR/prebuilt/linux-x86_64/bin/ndk-stack" "$@"
++"$DIR/prebuilt/linux-aarch64/bin/ndk-stack" "$@"
+diff --git a/ndk-which b/ndk-which
+--- a/ndk-which
++++ b/ndk-which
+@@ -1,3 +1,3 @@
+ #!/bin/sh
+ DIR=$(cd "$(dirname "$0")" && pwd)
+-"$DIR/prebuilt/linux-x86_64/bin/ndk-which" "$@"
++"$DIR/prebuilt/linux-aarch64/bin/ndk-which" "$@"

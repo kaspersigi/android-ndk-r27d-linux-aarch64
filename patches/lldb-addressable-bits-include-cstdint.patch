@@ -1,0 +1,13 @@
+diff --git a/lldb/include/lldb/Utility/AddressableBits.h b/lldb/include/lldb/Utility/AddressableBits.h
+index 8bf22815dc64..96e554d6fa34 100644
+--- a/lldb/include/lldb/Utility/AddressableBits.h
++++ b/lldb/include/lldb/Utility/AddressableBits.h
+@@ -10,6 +10,8 @@
+ #ifndef LLDB_UTILITY_ADDRESSABLEBITS_H
+ #define LLDB_UTILITY_ADDRESSABLEBITS_H
+ 
++#include <cstdint>
++
+ #include "lldb/lldb-forward.h"
+ 
+ namespace lldb_private {

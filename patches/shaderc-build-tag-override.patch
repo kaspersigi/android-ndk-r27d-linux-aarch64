@@ -1,0 +1,13 @@
+diff --git a/utils/update_build_version.py b/utils/update_build_version.py
+--- a/utils/update_build_version.py
++++ b/utils/update_build_version.py
+@@ -92,6 +92,9 @@ def describe(directory):
+     directory.  If successful, returns the output; otherwise returns
+     'unknown hash, <date>'.
+     """
++    build_tag = os.environ.get('NDK_BUILD_TAG')
++    if build_tag:
++        return build_tag
+     try:
+         # decode() is needed here for Python3 compatibility. In Python2,
+         # str and bytes are the same type, but not in Python3.
