@@ -1,45 +1,210 @@
 # Android NDK r27d for Linux AArch64
 
-This project builds an unofficial native Linux AArch64 host package for Android
-NDK r27d. The target sysroot and Android runtime libraries are taken unchanged
-from the official Linux x86_64 r27d package. Architecture-independent scripts
-are preserved, while the Linux host executables and libraries are AArch64.
-The host tag and package name are `linux-aarch64`; Android's target ABI name
-remains `arm64-v8a`.
+This repository builds an **unofficial** Linux AArch64 host package of Android
+NDK r27d (`27.3.13750724`). Google does not publish a Linux AArch64 package for
+this NDK release.
 
-The compiler source revisions are pinned to the official r27d `BUILD_INFO`:
+The resulting NDK uses the host tag `linux-aarch64`. Android target ABI names
+do not change: for example, the 64-bit ARM Android ABI is still `arm64-v8a`.
 
-- `toolchain/llvm-project`: `d8003a456d14a3deb8054cdaa529ffbf02d9b262`
-- `toolchain/llvm_android`: `3503453cd6ccac933b4a1ec5255b7fc29851ea6b`
-- compiler identity: clang 18.0.4, based on `r522817d`
+The package starts from Google's official Linux x86_64 r27d archive. Android
+target headers, the sysroot, target libc++, and Android runtime libraries are
+kept unchanged. Linux x86_64 host programs and libraries are replaced with
+AArch64 builds, and host-selection scripts are adapted for `linux-aarch64`.
 
-The first build stage creates native x86_64 table generators. The second stage
-cross-compiles Clang, LLD, LLVM BOLT, LLVM utilities, Clang extra tools, and
-Polly for `aarch64-unknown-linux-gnu`.
+This is a community build. It is not produced, signed, or supported by Google,
+and it is not byte-for-byte identical to an official NDK package.
 
-The patches under `patches/` contain the reproducible host-tag changes and the
-small source/build-system compatibility changes needed by the AArch64 cross
-build. The `include-cstdint` patches only compensate for modern C++ standard
-libraries no longer exposing fixed-width integer typedefs transitively.
+## Quick start
 
-The glslang compatibility patch has the same purpose for `SpvBuilder.h`.
+The supported build environment is **Ubuntu 26.04 (Resolute) on x86_64**. The
+build machine cross-compiles the Linux AArch64 host tools and runs validation
+through QEMU.
 
-## Requirements
-
-The build uses the official x86_64 NDK at
-`/mnt/develop/android-ndk-r27d` as the target-data reference. Override that
-path for assembly with `REFERENCE_NDK=/path/to/android-ndk-r27d`.
-
-On Ubuntu/Debian, the required tools include:
-
-```text
-clang cmake ninja-build build-essential python3 ripgrep rsync file patch git zip
-gcc-aarch64-linux-gnu g++-aarch64-linux-gnu qemu-user
-```
-
-## Build and validation
+Install the complete dependency set:
 
 ```bash
+./scripts/resolute-install-deps.sh
+```
+
+Run a clean build:
+
+```bash
+CLEAN=1 ./scripts/resolute-local-build.sh
+```
+
+The unified build script fetches pinned sources, builds every host component,
+assembles the NDK, runs the validation suite, and creates the release archive.
+It exits without producing a successful result if any required validation
+fails.
+
+## Outputs
+
+Successful builds create:
+
+| Path | Description |
+| --- | --- |
+| `dist/android-ndk-r27d/` | Assembled Linux AArch64 NDK |
+| `dist/android-ndk-r27d-linux.zip` | Distributable archive |
+| `dist/android-ndk-r27d-linux.zip.sha256` | SHA-256 checksum |
+
+The archive name intentionally matches Google's Linux naming pattern. It
+extracts to `android-ndk-r27d/`; the AArch64 identity is represented by the
+internal `linux-aarch64` host tag.
+
+After extracting the archive on a compatible Linux AArch64 system:
+
+```bash
+export ANDROID_NDK_HOME=/path/to/android-ndk-r27d
+"$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-aarch64/bin/clang" --version
+```
+
+The current host binaries require glibc 2.43 or newer.
+
+## Official reference package
+
+Assembly requires Google's official Linux x86_64 NDK r27d package as the
+reference tree. The build script chooses it in this order:
+
+1. `REFERENCE_NDK`, when explicitly set.
+2. `/mnt/develop/android-ndk-r27d`, when it is a valid r27d installation.
+3. A checksum-verified download cached below `.deps/`.
+
+The expected official archive is:
+
+```text
+URL:    https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+SHA256: 601246087a682d1944e1e16dd85bc6e49560fe8b6d61255be2829178c8ed15d9
+```
+
+To use an existing reference package:
+
+```bash
+REFERENCE_NDK=/path/to/android-ndk-r27d \
+  CLEAN=1 ./scripts/resolute-local-build.sh
+```
+
+## Build options
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CLEAN` | `0` | Set to `1` to remove `sources/`, `build/`, `out/`, and `dist/` before building |
+| `JOBS` | `nproc` | Number of parallel build jobs |
+| `REFERENCE_NDK` | auto-detected | Path to an extracted official Linux x86_64 r27d package |
+| `REFERENCE_NDK_CACHE_DIR` | `.deps/` | Download and extraction cache for the official reference package |
+| `REFERENCE_NDK_URL` | official URL | Override the reference archive URL |
+| `REFERENCE_NDK_SHA256` | pinned checksum | Override the expected reference archive checksum |
+| `ALLOW_UNSUPPORTED_HOST` | `0` | Set to `1` to bypass the Ubuntu 26.04 host check at your own risk |
+
+`CLEAN=1` deliberately preserves `.deps/`, allowing the verified official
+reference archive to be reused. To reduce parallelism without deleting the
+current build trees:
+
+```bash
+JOBS=8 ./scripts/resolute-local-build.sh
+```
+
+## What is built
+
+The Linux AArch64 host package includes builds of:
+
+- LLVM, Clang, LLD, LLDB, BOLT, Polly, and Clang extra tools
+- LLVM compiler runtimes and host libc++
+- bundled CPython 3.11 with LLDB Python bindings
+- GNU Make 4.3 and Yasm 1.3.0
+- shaderc, glslang, and SPIRV-Tools
+- Simpleperf report support
+- the musl compatibility helper required by the reference layout
+
+LLVM is built in two stages: native x86_64 table generators are created first,
+then the toolchain is cross-compiled for `aarch64-unknown-linux-gnu`.
+
+The compiler revisions match the revisions recorded in the official r27d
+`BUILD_INFO`:
+
+| Source | Revision |
+| --- | --- |
+| `toolchain/llvm-project` | `d8003a456d14a3deb8054cdaa529ffbf02d9b262` |
+| `toolchain/llvm_android` | `3503453cd6ccac933b4a1ec5255b7fc29851ea6b` |
+| Compiler identity | Clang 18.0.4, based on `r522817d` |
+
+All other source revisions are also pinned in
+[`scripts/fetch-sources.sh`](scripts/fetch-sources.sh). Compatibility and host
+tag changes are maintained as reviewable files under [`patches/`](patches/).
+
+## Validation
+
+[`scripts/validate-ndk.sh`](scripts/validate-ndk.sh) runs natively on AArch64
+or through QEMU on the supported x86_64 build host. It verifies:
+
+- the normalized package inventory, entry types, permissions, and symlink
+  targets against the official Linux x86_64 package;
+- that Linux host ELF files and host archive members are AArch64;
+- Clang, LLD, LLDB, BOLT, LLVM target registration, Python, and LLDB's Python
+  bindings;
+- GNU Make, Yasm, shader compilation, SPIR-V validation, and Simpleperf report
+  processing;
+- direct C and C++ linking for ARM, AArch64, x86, x86_64, and RISC-V Android
+  targets;
+- Android CMake toolchain integration for `arm64-v8a`;
+- `ndk-build` output for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
+
+For the official r27d reference used by this project, the normalized reference
+and candidate inventories each contain 9,279 entries. This is a one-for-one
+layout check after host-name normalization, not a claim that rebuilt host
+binaries are byte-identical to Google's x86_64 binaries.
+
+## GitHub Actions release
+
+[`release.yml`](.github/workflows/release.yml) runs a clean build on an Ubuntu
+26.04 GitHub-hosted runner whenever a `v*` tag is pushed. The workflow:
+
+1. installs dependencies with the same repository script;
+2. builds, assembles, and validates the package;
+3. uploads the ZIP and checksum as a one-day workflow artifact;
+4. downloads and verifies both files in a separate publish job;
+5. creates or updates the corresponding GitHub Release.
+
+Example release tag:
+
+```bash
+git tag v27d-aarch64.1
+git push origin v27d-aarch64.1
+```
+
+The published assets are:
+
+```text
+android-ndk-r27d-linux.zip
+android-ndk-r27d-linux.zip.sha256
+```
+
+## Known limitations
+
+- The host binaries require glibc 2.43 or newer.
+- This project does not reproduce Google's PGO, BOLT, or MLGO optimization
+  pipeline, so rebuilt host binaries differ in size, performance, and content.
+- Linux AArch64 MemProf and deadlock-detector compiler runtimes are
+  experimental in this source revision. Compatibility implementations are
+  built to preserve the official file inventory.
+- The five reference paths containing `hwasan_aliases` are x86_64-specific;
+  those paths contain the normal AArch64 HWASan implementation in this package.
+- Google's static Android AArch64 Simpleperf executable is reused. The native
+  AArch64 `libsimpleperf_report.so` is built without libdexfile, so it cannot
+  extract DEX symbols itself.
+- `musl/lib/libclang.so` is an AArch64 glibc-hosted compatibility copy, not a
+  musl-hosted build. The primary glibc toolchain does not use this copy.
+
+See [`LINUX_AARCH64_BUILD_INFO.md`](LINUX_AARCH64_BUILD_INFO.md) for the
+technical build boundary included with this repository.
+
+## Component scripts
+
+The unified entry point is the supported way to produce a release. Individual
+component scripts remain available for development and troubleshooting, in
+the following order:
+
+```text
 scripts/fetch-sources.sh
 scripts/build-host-dependencies.sh
 scripts/build-host-runtimes.sh
@@ -56,45 +221,3 @@ scripts/assemble-ndk.sh
 scripts/validate-ndk.sh
 scripts/package-ndk.sh
 ```
-
-The assembled package is written to `dist/android-ndk-r27d`, and the final
-archive is `dist/android-ndk-r27d-linux.zip`. The archive's top-level directory
-is `android-ndk-r27d/`. `validate-ndk.sh` runs natively on an
-AArch64 host or through QEMU on an x86_64 build host. It checks host tools,
-shader compilation, bundled Python and LLDB, host Simpleperf, C and C++ linking
-for all r27d target architectures, CMake, ndk-build, the normalized one-for-one
-reference layout (including permissions), the host ELF architecture boundary,
-and all AArch64 host archive members. The reference and candidate both contain
-9,279 normalized entries.
-
-`build-host-tools.sh` builds GNU Make 4.3 and Yasm 1.3.0. The shader build uses
-the exact `ndk-r27d` source revisions. The reference r27d package identifies
-that unchanged shader tool set as `ndk-r26c`, so the AArch64 binaries preserve
-the same version identity.
-
-## Compatibility boundary
-
-The current host binaries require glibc 2.43 or newer because they were linked
-against the AArch64 cross sysroot installed on the build machine. The package
-includes AArch64 builds of host LLDB, its bundled CPython 3.11 runtime, and the
-Simpleperf report library.
-
-Google's r27d compiler-rt sources do not normally publish Linux AArch64
-MemProf or deadlock-detector runtimes. This build enables them experimentally
-to retain the reference inventory. The five `hwasan_aliases` filenames are
-x86_64-specific upstream; on AArch64 those exact paths contain the normal
-AArch64 HWASan implementation. They are layout-compatible additions, not a
-claim of upstream support or production qualification.
-
-The Simpleperf executable is Google's static Android AArch64 r27d binary,
-which is usable as a Linux AArch64 process. `libsimpleperf_report.so` is built
-as a native glibc AArch64 library and passes the official `perf.data` report
-test (2,409 samples). It is built without libdexfile, so report-library DEX
-symbol extraction is unavailable.
-
-The reference package also contains a musl-hosted `musl/lib/libclang.so`.
-This project currently fills that exact path with the glibc-hosted AArch64
-libclang from the main toolchain build. It has the correct host architecture
-and keeps the reference layout exact, but it is not a musl-hosted libclang.
-The primary `linux-aarch64` glibc toolchain does not use that compatibility
-copy.

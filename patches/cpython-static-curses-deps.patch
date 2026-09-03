@@ -1,8 +1,8 @@
 diff --git a/setup.py b/setup.py
-index d85bf6112c..a625619a5e 100644
+index 4f122b6..08a78d9 100644
 --- a/setup.py
 +++ b/setup.py
-@@ -1121,6 +1121,8 @@ class PyBuildExt(build_ext):
+@@ -1122,6 +1122,8 @@ def detect_readline_curses(self):
          curses_defines = []
          curses_includes = []
          panel_library = 'panel'
@@ -11,7 +11,7 @@ index d85bf6112c..a625619a5e 100644
          if curses_library == 'ncursesw':
              curses_defines.append(('HAVE_NCURSESW', '1'))
              if not CROSS_COMPILING:
-@@ -1144,10 +1146,14 @@ class PyBuildExt(build_ext):
+@@ -1145,10 +1147,13 @@ def detect_readline_curses(self):
          curses_enabled = True
          if curses_library.startswith('ncurses'):
              curses_libs = [curses_library]
@@ -26,7 +26,7 @@ index d85bf6112c..a625619a5e 100644
          elif curses_library == 'curses' and not MACOS:
                  # OSX has an old Berkeley curses, not good enough for
                  # the _curses module.
-@@ -1171,10 +1177,16 @@ class PyBuildExt(build_ext):
+@@ -1171,10 +1176,16 @@ def detect_readline_curses(self):
          skip_curses_panel = True if AIX else False
          if (curses_enabled and not skip_curses_panel and
                  self.compiler.find_library_file(self.lib_dirs, panel_library)):

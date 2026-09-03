@@ -1,0 +1,90 @@
+name: Release Android NDK r27d Linux AArch64
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REFERENCE_NDK_SHA256: 601246087a682d1944e1e16dd85bc6e49560fe8b6d61255be2829178c8ed15d9
+
+jobs:
+  build:
+    name: Build and validate package
+    runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Reclaim runner disk space
+        run: |
+          df -h /
+          sudo rm -rf -- /opt/ghc /usr/local/lib/android /usr/share/dotnet
+          df -h /
+      - name: Cache official Android NDK r27d reference
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ runner.temp }}/android-ndk-r27d
+          key: android-ndk-r27d-linux-x86_64-${{ env.REFERENCE_NDK_SHA256 }}
+      - name: Install Ubuntu 26.04 dependencies
+        run: ./scripts/resolute-install-deps.sh
+      - name: Build, validate, and package
+        env:
+          CLEAN: "1"
+          REFERENCE_NDK_CACHE_DIR: ${{ runner.temp }}
+          SOURCE_DATE_EPOCH: "1751932800"
+        run: ./scripts/resolute-local-build.sh
+      - name: Show final disk usage
+        if: always()
+        run: |
+          df -h /
+          du -sh build out sources dist 2>/dev/null || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-ndk-r27d-linux-aarch64
+          path: |
+            dist/android-ndk-r27d-linux.zip
+            dist/android-ndk-r27d-linux.zip.sha256
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-ndk-r27d-linux-aarch64
+          path: dist
+      - name: Verify release assets
+        run: |
+          cd dist
+          sha256sum --check android-ndk-r27d-linux.zip.sha256
+          unzip -tq android-ndk-r27d-linux.zip
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          assets=(
+            dist/android-ndk-r27d-linux.zip
+            dist/android-ndk-r27d-linux.zip.sha256
+          )
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" --clobber "${assets[@]}"
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --verify-tag \
+              --generate-notes \
+              --title "${GITHUB_REF_NAME}" \
+              "${assets[@]}"
+          fi
