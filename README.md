@@ -132,11 +132,14 @@ REFERENCE_NDK=/path/to/android-ndk-r27d \
 `CLEAN=1` deliberately preserves `.deps/`, allowing the verified official
 reference archive to be reused.
 
-Project policy requires every local build and validation run to use all
+Project policy requires every parallel-safe local build stage to use all
 processors reported by `nproc`. Do not set `JOBS=4` locally to imitate the
 hosted workflow: an NDK rebuild can otherwise waste hours. The build entry
 rejects a smaller local `JOBS` value. `JOBS` is reserved for CI, and GitHub
-Actions explicitly sets `JOBS=4` for the free hosted runner.
+Actions explicitly sets `JOBS=4` for the free hosted runner. The one deliberate
+exception is the pinned SWIG autotools/Bison stage: it remains serial because
+parallel make races `config.status` and `parser.h`; this small prerequisite does
+not reduce parallelism for LLVM or the other long-running compilation stages.
 
 ## What is built
 
