@@ -122,6 +122,42 @@ class HostScriptDifferenceTest(unittest.TestCase):
         )
 
 
+class GeneratedHostTextDifferenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        root = Path(self.temporary_directory.name)
+        self.reference = root / "reference"
+        self.candidate = root / "candidate"
+        self.reference.write_text("official x86_64 content\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def entries(self) -> tuple[Entry, Entry]:
+        return (
+            Entry("file", self.reference, 0o644, digest="reference"),
+            Entry("file", self.candidate, 0o644, digest="candidate"),
+        )
+
+    def test_empty_python_configuration_is_rejected(self) -> None:
+        relative = (
+            "toolchains/llvm/prebuilt/linux-aarch64/python3/include/"
+            "python3.11/pyconfig.h"
+        )
+        self.candidate.write_bytes(b"")
+        expected, actual = self.entries()
+        self.assertFalse(content_difference_is_expected(relative, expected, actual))
+
+    def test_unlisted_compiler_rt_symbol_file_is_rejected(self) -> None:
+        relative = (
+            "toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/"
+            "aarch64-unknown-linux-gnu/unlisted.a.syms"
+        )
+        self.candidate.write_text("{\n  symbol;\n};\n", encoding="utf-8")
+        expected, actual = self.entries()
+        self.assertFalse(content_difference_is_expected(relative, expected, actual))
+
+
 class ReferenceIdentityTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()

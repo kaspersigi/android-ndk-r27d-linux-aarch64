@@ -1,0 +1,22 @@
+# SHA-256 after replacing the absolute repository root with ${PROJECT_ROOT}.
+# Paths are relative to android-ndk-r27d/.
+5b692ac57e4658f958b3300b36927961abfbbb54eea32628fa19af9a88646aaf  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.asan.a.syms
+6eac435ad2d94c93a4e3deb0ffb5e62e37ca5eb7b5f32d96ffc812abe54918d7  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.asan_cxx.a.syms
+ab760ab9dbb4f594ad593e123421f5eaf1ea116c27f961c60271da5fe7997245  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.dfsan.a.syms
+517544dbbf108f28862b0644a9ce6b0a6fac33bbaf199793f1bc5de685ab2eb4  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.hwasan.a.syms
+517544dbbf108f28862b0644a9ce6b0a6fac33bbaf199793f1bc5de685ab2eb4  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.hwasan_aliases.a.syms
+7634cbe8cc66a5e07b8cda2e21275aab735b36d591f369c05a855818e38654f7  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.hwasan_aliases_cxx.a.syms
+7634cbe8cc66a5e07b8cda2e21275aab735b36d591f369c05a855818e38654f7  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.hwasan_cxx.a.syms
+c0293df07d3b8c5fe0359d2ef29a2d946621ae6e0a20a968033af58932f135c1  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.memprof.a.syms
+6eac435ad2d94c93a4e3deb0ffb5e62e37ca5eb7b5f32d96ffc812abe54918d7  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.memprof_cxx.a.syms
+ae7177e3d47dbbcf43520d46435367336b05454dae2d93f29f5cc76b47930080  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.msan.a.syms
+3529bbca9108ba19cd5b53033912776f3e19cbe1c3d70024f150fd4ee573fa68  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.msan_cxx.a.syms
+1606d5e0ebbd6be93f1b018d771911e7ae04c8a3316dd6f01956cfc07b1111aa  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.tsan.a.syms
+eb4fd0eb3afdf979f40825c359e931ccc1f830238e73fd8cf65172535ec7bb85  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.tsan_cxx.a.syms
+e75012de432dd345c24acb6eecad877944bd1944fec55c9b44218ef610424fd0  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.ubsan_minimal.a.syms
+7e1451c7af1386f34d27acf1eea732fdc3c293f9f501c01af29c5a7b964b3d80  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.ubsan_standalone.a.syms
+e75012de432dd345c24acb6eecad877944bd1944fec55c9b44218ef610424fd0  toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu/libclang_rt.ubsan_standalone_cxx.a.syms
+08ab43a04f8274ea4332581a45a8372e31562506ba815fa9563c639b3c504fc9  toolchains/llvm/prebuilt/linux-aarch64/python3/include/python3.11/pyconfig.h
+a20f73ea7e083a02ba6a0ec8c42ef9b92b5452defc5769d5cf0c1a9c83c62f7c  toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11-embed.pc
+3c87828fe0ea82ee370016fb5400c25c5ad5e1da0558f0a059e906149f82c8ab  toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11.pc
+47d9e189b90dd9c8ab3c30c2547923ee58383a07c29bc70621f3bc20974136d4  toolchains/llvm/prebuilt/linux-aarch64/python3/lib/python3.11/_sysconfigdata__linux_aarch64-linux-gnu.py

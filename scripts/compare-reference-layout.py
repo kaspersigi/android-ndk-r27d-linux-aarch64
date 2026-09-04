@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import argparse
 from dataclasses import dataclass
 import hashlib
@@ -46,6 +47,23 @@ HOST_SCRIPT_DIFFERENCES = {
 HOST_SCRIPT_MANIFEST = (
     Path(__file__).resolve().parents[1] / "manifests/ndk-host-scripts.tsv"
 )
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+HOST_GENERATED_TEXT_MANIFEST = (
+    PROJECT_ROOT / "manifests/ndk-host-generated-text.tsv"
+)
+
+PYTHON_CONFIG_FILES = {
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/include/python3.11/pyconfig.h",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11-embed.pc",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11.pc",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/python3.11/"
+    "_sysconfigdata__linux_aarch64-linux-gnu.py",
+}
+
+COMPILER_RT_GENERATED_TEXT_PREFIX = (
+    "toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/"
+    "aarch64-unknown-linux-gnu/"
+)
 
 HOST_GENERATED_CONTENT_PREFIXES = (
     "toolchains/llvm/prebuilt/linux-aarch64/lib/aarch64-unknown-linux-gnu",
@@ -55,10 +73,6 @@ HOST_GENERATED_CONTENT_PREFIXES = (
 HOST_GENERATED_CONTENT_FILES = {
     "prebuilt/linux-aarch64/lib/libyasm.a",
     "toolchains/llvm/prebuilt/linux-aarch64/lib/libbolt_rt_instr.a",
-    "toolchains/llvm/prebuilt/linux-aarch64/python3/include/python3.11/pyconfig.h",
-    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11-embed.pc",
-    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11.pc",
-    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/python3.11/_sysconfigdata__linux_aarch64-linux-gnu.py",
 }
 
 HOST_ELF_CONTENT_PREFIXES = (
@@ -211,7 +225,169 @@ def read_host_script_digests(path: Path) -> dict[str, str]:
     return result
 
 
+def is_host_generated_text_path(relative: str) -> bool:
+    return relative in PYTHON_CONFIG_FILES or (
+        relative.startswith(COMPILER_RT_GENERATED_TEXT_PREFIX)
+        and relative.endswith(".syms")
+    )
+
+
+def read_generated_text_digests(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        fields = stripped.split()
+        if len(fields) != 2 or len(fields[0]) != 64:
+            raise ValueError(
+                f"invalid generated-text manifest entry at {path}:{line_number}"
+            )
+        digest, relative = fields
+        try:
+            bytes.fromhex(digest)
+        except ValueError as error:
+            raise ValueError(f"invalid SHA-256 at {path}:{line_number}") from error
+        if not is_host_generated_text_path(relative):
+            raise ValueError(
+                f"unexpected generated-text manifest path at {path}:{line_number}: "
+                f"{relative}"
+            )
+        if relative in result:
+            raise ValueError(f"duplicate generated-text manifest path: {relative}")
+        result[relative] = digest.lower()
+    return result
+
+
+def normalized_generated_text_digest(path: Path) -> str:
+    content = path.read_bytes().replace(
+        os.fsencode(PROJECT_ROOT), b"${PROJECT_ROOT}"
+    )
+    return hashlib.sha256(content).hexdigest()
+
+
+def pkg_config_is_valid(relative: str, content: str) -> bool:
+    variables: dict[str, str] = {}
+    fields: dict[str, str] = {}
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" in line and (":" not in line or line.index("=") < line.index(":")):
+            key, value = line.split("=", 1)
+            variables[key.strip()] = value.strip()
+        elif ":" in line:
+            key, value = line.split(":", 1)
+            fields[key.strip()] = value.strip()
+        else:
+            return False
+
+    expected_prefix = str(PROJECT_ROOT / "out/python-linux-aarch64")
+    expected_description = (
+        "Embed Python into an application"
+        if relative.endswith("python-3.11-embed.pc")
+        else "Build a C extension for Python"
+    )
+    expected_libs = (
+        "-L${libdir} -lpython3.11"
+        if relative.endswith("python-3.11-embed.pc")
+        else ""
+    )
+    private_libs = fields.pop("Libs.private", "").split()
+    return variables == {
+        "prefix": expected_prefix,
+        "exec_prefix": "${prefix}",
+        "libdir": "${exec_prefix}/lib",
+        "includedir": "${prefix}/include",
+    } and fields == {
+        "Name": "Python",
+        "Description": expected_description,
+        "Requires": "",
+        "Version": "3.11",
+        "Libs": expected_libs,
+        "Cflags": "-I${includedir}/python3.11",
+    } and private_libs == ["-ldl", "-lpthread"]
+
+
+def sysconfig_is_valid(content: str) -> bool:
+    try:
+        module = ast.parse(content)
+        if len(module.body) != 1 or not isinstance(module.body[0], ast.Assign):
+            return False
+        assignment = module.body[0]
+        if (
+            len(assignment.targets) != 1
+            or not isinstance(assignment.targets[0], ast.Name)
+            or assignment.targets[0].id != "build_time_vars"
+        ):
+            return False
+        values = ast.literal_eval(assignment.value)
+    except (SyntaxError, ValueError):
+        return False
+    if not isinstance(values, dict):
+        return False
+    expected = {
+        "AR": "aarch64-linux-gnu-ar",
+        "BUILD_GNU_TYPE": "x86_64-pc-linux-gnu",
+        "CC": "aarch64-linux-gnu-gcc",
+        "CXX": "aarch64-linux-gnu-g++",
+        "EXT_SUFFIX": ".cpython-311-aarch64-linux-gnu.so",
+        "HOST_GNU_TYPE": "aarch64-unknown-linux-gnu",
+        "INSTSONAME": "libpython3.11.so.1.0",
+        "LDLIBRARY": "libpython3.11.so",
+        "LDVERSION": "3.11",
+        "LIBRARY": "libpython3.11.a",
+        "MACHDEP": "linux",
+        "MULTIARCH": "aarch64-linux-gnu",
+        "Py_ENABLE_SHARED": 1,
+        "SIZEOF_VOID_P": 8,
+        "SOABI": "cpython-311-aarch64-linux-gnu",
+        "VERSION": "3.11",
+        "prefix": str(PROJECT_ROOT / "out/python-linux-aarch64"),
+        "exec_prefix": str(PROJECT_ROOT / "out/python-linux-aarch64"),
+    }
+    return all(values.get(key) == value for key, value in expected.items())
+
+
+def generated_text_is_valid(relative: str, path: Path) -> bool:
+    expected_digest = PINNED_GENERATED_TEXT_DIGESTS.get(relative)
+    if expected_digest is None:
+        return False
+    try:
+        content = path.read_text(encoding="utf-8")
+        if normalized_generated_text_digest(path) != expected_digest:
+            return False
+    except (OSError, UnicodeError):
+        return False
+
+    if relative.endswith("pyconfig.h"):
+        required_defines = {
+            "#define HAVE_DLOPEN 1",
+            "#define Py_ENABLE_SHARED 1",
+            "#define SIZEOF_VOID_P 8",
+        }
+        return required_defines.issubset(set(content.splitlines()))
+    if relative.endswith(".pc"):
+        return pkg_config_is_valid(relative, content)
+    if relative.endswith("_sysconfigdata__linux_aarch64-linux-gnu.py"):
+        return sysconfig_is_valid(content)
+    if relative.endswith(".syms"):
+        lines = [line.strip() for line in content.splitlines()]
+        return (
+            len(lines) >= 3
+            and lines[0] == "{"
+            and lines[-1] == "};"
+            and all(line and line.endswith(";") for line in lines[1:-1])
+        )
+    return False
+
+
 PINNED_HOST_SCRIPT_DIGESTS = read_host_script_digests(HOST_SCRIPT_MANIFEST)
+PINNED_GENERATED_TEXT_DIGESTS = read_generated_text_digests(
+    HOST_GENERATED_TEXT_MANIFEST
+)
 
 
 def is_rebuilt_host_elf_path(relative: str) -> bool:
@@ -228,6 +404,8 @@ def content_difference_is_expected(
 ) -> bool:
     if relative in HOST_SCRIPT_DIFFERENCES:
         return actual.digest == PINNED_HOST_SCRIPT_DIGESTS[relative]
+    if is_host_generated_text_path(relative):
+        return generated_text_is_valid(relative, actual.source)
     if relative in HOST_GENERATED_CONTENT_FILES:
         return True
     if any(
@@ -337,13 +515,14 @@ def main() -> int:
         if expected[path].kind == actual[path].kind == "file"
         and (
             (
-                path in HOST_SCRIPT_DIFFERENCES
+                (path in HOST_SCRIPT_DIFFERENCES or is_host_generated_text_path(path))
                 and not content_difference_is_expected(
                     path, expected[path], actual[path]
                 )
             )
             or (
                 path not in HOST_SCRIPT_DIFFERENCES
+                and not is_host_generated_text_path(path)
                 and expected[path].digest != actual[path].digest
                 and not content_difference_is_expected(
                     path, expected[path], actual[path]
