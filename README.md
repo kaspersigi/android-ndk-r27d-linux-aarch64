@@ -117,7 +117,7 @@ REFERENCE_NDK=/path/to/android-ndk-r27d \
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLEAN` | `0` | Set to `1` to remove `sources/`, `build/`, `out/`, and `dist/` before building |
-| `JOBS` | `nproc` | Number of parallel build jobs |
+| `JOBS` | unset | CI-only parallel job limit; local builds are fixed to `nproc` |
 | `REFERENCE_NDK` | unset | Explicit path to an exact, clean official Linux x86_64 r27d package |
 | `REFERENCE_NDK_CACHE_DIR` | `.deps/` | Download and extraction cache for the official reference package |
 | `REFERENCE_NDK_URL` | official URL | Override the reference archive URL |
@@ -125,15 +125,13 @@ REFERENCE_NDK=/path/to/android-ndk-r27d \
 | `ALLOW_UNSUPPORTED_HOST` | `0` | Set to `1` to bypass the Ubuntu 26.04 host check at your own risk |
 
 `CLEAN=1` deliberately preserves `.deps/`, allowing the verified official
-reference archive to be reused. To reduce parallelism without deleting the
-current build trees:
+reference archive to be reused.
 
-```bash
-JOBS=8 ./scripts/resolute-local-build.sh
-```
-
-Local builds use all processors reported by `nproc` unless `JOBS` is set.
-GitHub Actions explicitly uses `JOBS=4` for the free hosted runner.
+Project policy requires every local build and validation run to use all
+processors reported by `nproc`. Do not set `JOBS=4` locally to imitate the
+hosted workflow: an NDK rebuild can otherwise waste hours. The build entry
+rejects a smaller local `JOBS` value. `JOBS` is reserved for CI, and GitHub
+Actions explicitly sets `JOBS=4` for the free hosted runner.
 
 ## What is built
 

@@ -21,7 +21,8 @@ Environment:
   ALLOW_UNSUPPORTED_HOST=0  Require Ubuntu 26.04 (Resolute); set to 1 to bypass.
   CLEAN=0                   Set to 1 to remove sources/, build/, out/, and dist/
                             before building.
-  JOBS=<n>                  Parallel build jobs; defaults to nproc.
+  JOBS=<n>                  CI-only parallel job limit. Local builds always use
+                            every processor reported by nproc.
   REFERENCE_NDK=<path>      Official Linux x86_64 android-ndk-r27d directory.
   REFERENCE_NDK_CACHE_DIR   Download/cache parent; defaults to .deps/.
   REFERENCE_NDK_URL         Official reference archive URL override.
@@ -59,7 +60,17 @@ require_boolean() {
 
 allow_unsupported_host=${ALLOW_UNSUPPORTED_HOST:-0}
 clean=${CLEAN:-0}
-jobs=${JOBS:-$(nproc)}
+host_jobs=$(nproc)
+if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
+    jobs=${JOBS:-$host_jobs}
+else
+    if [[ ${JOBS+x} == x && "$JOBS" != "$host_jobs" ]]; then
+        echo "error: local builds must use all $host_jobs processors reported by nproc" >&2
+        echo "       JOBS is reserved for GitHub Actions resource limits" >&2
+        exit 2
+    fi
+    jobs=$host_jobs
+fi
 require_boolean ALLOW_UNSUPPORTED_HOST "$allow_unsupported_host"
 require_boolean CLEAN "$clean"
 if [[ ! "$jobs" =~ ^[1-9][0-9]*$ ]]; then

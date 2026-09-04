@@ -10,6 +10,12 @@ build_python="$project_root/sources/python-prebuilt-reference/bin/python3.11"
 jobs=${JOBS:-$(nproc)}
 static_curses_patch="$project_root/patches/cpython-static-curses-deps.patch"
 
+if ! command -v patchelf >/dev/null 2>&1; then
+    echo "Missing required command: patchelf" >&2
+    echo "Run ./scripts/resolute-install-deps.sh first." >&2
+    exit 1
+fi
+
 for required in \
     "$source_dir/configure" \
     "$build_python" \
@@ -94,3 +100,12 @@ aarch64-linux-gnu-gcc -O2 -fPIC -shared \
     -Wl,--no-as-needed /usr/aarch64-linux-gnu/lib/libnsl.so.1 \
     -o "$nis_output"
 file "$nis_output"
+
+# CPython's extension build path interprets the configure-time linker flags a
+# second time and otherwise turns $ORIGIN into the invalid absolute /../lib.
+# Normalize every extension, including the separately built nis module, to the
+# same relocatable RPATH as Google's r27d host Python package.
+while IFS= read -r -d '' extension; do
+    patchelf --force-rpath --set-rpath '$ORIGIN/../lib' "$extension"
+done < <(find "$install_dir/lib/python3.11/lib-dynload" \
+    -type f -name '*.so' -print0)

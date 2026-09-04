@@ -78,6 +78,7 @@ packages=(
     make
     ninja-build
     patch
+    patchelf
     perl
     pkg-config
     po4a

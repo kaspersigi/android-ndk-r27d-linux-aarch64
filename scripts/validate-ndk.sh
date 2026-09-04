@@ -26,6 +26,14 @@ python3 -B "$project_root/tests/compare_reference_layout_test.py"
 "$project_root/scripts/compare-reference-layout.py" "$package_root" \
     --reference "${REFERENCE_NDK:-/mnt/develop/android-ndk-r27d}"
 
+while IFS= read -r -d '' extension; do
+    readelf -d "$extension" | grep -Fq 'Library rpath: [$ORIGIN/../lib]' || {
+        echo "Invalid Python extension RPATH: $extension" >&2
+        exit 1
+    }
+done < <(find "$toolchain/python3/lib/python3.11/lib-dynload" \
+    -type f -name '*.so' -print0)
+
 case $(uname -m) in
     aarch64|arm64)
         host_run() { "$@"; }

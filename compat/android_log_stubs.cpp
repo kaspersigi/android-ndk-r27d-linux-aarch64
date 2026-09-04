@@ -4,14 +4,16 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 
 namespace {
 
 std::atomic<int32_t> minimum_priority{ANDROID_LOG_DEFAULT};
 std::string default_tag;
-__android_logger_function logger = __android_log_stderr_logger;
-__android_aborter_function aborter = __android_log_default_aborter;
+std::mutex default_tag_mutex;
+std::atomic<__android_logger_function> logger{__android_log_stderr_logger};
+std::atomic<__android_aborter_function> aborter{__android_log_default_aborter};
 
 int PrintFormatted(int buffer_id, int priority, const char* tag, const char* format, va_list args) {
   char buffer[4096];
@@ -73,11 +75,12 @@ int __android_log_buf_print(int buffer_id, int priority, const char* tag, const 
 }
 
 void __android_log_write_log_message(__android_log_message* message) {
-  logger(message);
+  logger.load(std::memory_order_acquire)(message);
 }
 
 void __android_log_set_logger(__android_logger_function new_logger) {
-  logger = new_logger != nullptr ? new_logger : __android_log_stderr_logger;
+  logger.store(new_logger != nullptr ? new_logger : __android_log_stderr_logger,
+               std::memory_order_release);
 }
 
 void __android_log_logd_logger(const __android_log_message* message) {
@@ -85,17 +88,22 @@ void __android_log_logd_logger(const __android_log_message* message) {
 }
 
 void __android_log_stderr_logger(const __android_log_message* message) {
-  const char* tag = message->tag != nullptr ? message->tag :
-                    (default_tag.empty() ? "simpleperf" : default_tag.c_str());
+  std::string tag_snapshot;
+  if (message->tag == nullptr) {
+    std::lock_guard<std::mutex> lock(default_tag_mutex);
+    tag_snapshot = default_tag.empty() ? "simpleperf" : default_tag;
+  }
+  const char* tag = message->tag != nullptr ? message->tag : tag_snapshot.c_str();
   fprintf(stderr, "%s: %s\n", tag, message->message != nullptr ? message->message : "");
 }
 
 void __android_log_set_aborter(__android_aborter_function new_aborter) {
-  aborter = new_aborter != nullptr ? new_aborter : __android_log_default_aborter;
+  aborter.store(new_aborter != nullptr ? new_aborter : __android_log_default_aborter,
+                std::memory_order_release);
 }
 
 void __android_log_call_aborter(const char* message) {
-  aborter(message);
+  aborter.load(std::memory_order_acquire)(message);
 }
 
 void __android_log_default_aborter(const char*) {
@@ -121,6 +129,7 @@ int32_t __android_log_get_minimum_priority() {
 }
 
 void __android_log_set_default_tag(const char* tag) {
+  std::lock_guard<std::mutex> lock(default_tag_mutex);
   default_tag = tag != nullptr ? tag : "";
 }
 
