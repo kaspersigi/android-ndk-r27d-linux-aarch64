@@ -232,6 +232,13 @@ def is_host_generated_text_path(relative: str) -> bool:
     )
 
 
+def is_pinned_generated_text_path(relative: str) -> bool:
+    return (
+        relative.startswith(COMPILER_RT_GENERATED_TEXT_PREFIX)
+        and relative.endswith(".syms")
+    )
+
+
 def read_generated_text_digests(path: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for line_number, line in enumerate(
@@ -250,7 +257,7 @@ def read_generated_text_digests(path: Path) -> dict[str, str]:
             bytes.fromhex(digest)
         except ValueError as error:
             raise ValueError(f"invalid SHA-256 at {path}:{line_number}") from error
-        if not is_host_generated_text_path(relative):
+        if not is_pinned_generated_text_path(relative):
             raise ValueError(
                 f"unexpected generated-text manifest path at {path}:{line_number}: "
                 f"{relative}"
@@ -352,21 +359,32 @@ def sysconfig_is_valid(content: str) -> bool:
 
 
 def generated_text_is_valid(relative: str, path: Path) -> bool:
-    expected_digest = PINNED_GENERATED_TEXT_DIGESTS.get(relative)
-    if expected_digest is None:
-        return False
     try:
         content = path.read_text(encoding="utf-8")
-        if normalized_generated_text_digest(path) != expected_digest:
-            return False
     except (OSError, UnicodeError):
         return False
 
+    if is_pinned_generated_text_path(relative):
+        expected_digest = PINNED_GENERATED_TEXT_DIGESTS.get(relative)
+        if (
+            expected_digest is None
+            or normalized_generated_text_digest(path) != expected_digest
+        ):
+            return False
+
     if relative.endswith("pyconfig.h"):
         required_defines = {
+            "#define DOUBLE_IS_LITTLE_ENDIAN_IEEE754 1",
             "#define HAVE_DLOPEN 1",
+            '#define PY_FORMAT_SIZE_T "z"',
             "#define Py_ENABLE_SHARED 1",
+            "#define SIZEOF_INT 4",
+            "#define SIZEOF_LONG 8",
+            "#define SIZEOF_LONG_LONG 8",
+            "#define SIZEOF_SIZE_T 8",
+            "#define SIZEOF_TIME_T 8",
             "#define SIZEOF_VOID_P 8",
+            "/* #undef Py_DEBUG */",
         }
         return required_defines.issubset(set(content.splitlines()))
     if relative.endswith(".pc"):

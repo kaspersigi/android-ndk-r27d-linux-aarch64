@@ -216,11 +216,11 @@ files are SHA-256 checked. Only the documented patched/generated files and
 actual x86_64-to-AArch64 ELF replacements may differ; rebuilt host binaries are
 not expected to be byte-identical to Google's x86_64 binaries. The nine
 host-tag scripts modified by the pinned patch are not broad exceptions: each
-must match its exact digest in `manifests/ndk-host-scripts.tsv`. The four
-AArch64 CPython configuration files and all 16 compiler-rt `*.syms` files are
-likewise checked against `manifests/ndk-host-generated-text.tsv`; their digests
-normalize only the absolute repository root, and their Python ABI, pkg-config
-fields, and symbol-file structure are validated independently.
+must match its exact digest in `manifests/ndk-host-scripts.tsv`. All 16
+deterministic compiler-rt `*.syms` files likewise match the exact digests in
+`manifests/ndk-host-generated-text.tsv`. CPython configuration is intentionally
+validated by stable target ABI, pkg-config, and sysconfig fields instead of
+whole-file hashes because valid configure probe results vary by build host.
 
 ## GitHub Actions release
 

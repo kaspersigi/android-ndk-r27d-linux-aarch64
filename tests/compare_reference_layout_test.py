@@ -148,6 +148,31 @@ class GeneratedHostTextDifferenceTest(unittest.TestCase):
         expected, actual = self.entries()
         self.assertFalse(content_difference_is_expected(relative, expected, actual))
 
+    def test_python_configuration_uses_stable_abi_fields_not_digest(self) -> None:
+        relative = (
+            "toolchains/llvm/prebuilt/linux-aarch64/python3/include/"
+            "python3.11/pyconfig.h"
+        )
+        required = {
+            "#define DOUBLE_IS_LITTLE_ENDIAN_IEEE754 1",
+            "#define HAVE_DLOPEN 1",
+            '#define PY_FORMAT_SIZE_T "z"',
+            "#define Py_ENABLE_SHARED 1",
+            "#define SIZEOF_INT 4",
+            "#define SIZEOF_LONG 8",
+            "#define SIZEOF_LONG_LONG 8",
+            "#define SIZEOF_SIZE_T 8",
+            "#define SIZEOF_TIME_T 8",
+            "#define SIZEOF_VOID_P 8",
+            "/* #undef Py_DEBUG */",
+        }
+        self.candidate.write_text(
+            "\n".join(sorted(required | {"/* host probe results may vary */"})),
+            encoding="utf-8",
+        )
+        expected, actual = self.entries()
+        self.assertTrue(content_difference_is_expected(relative, expected, actual))
+
     def test_unlisted_compiler_rt_symbol_file_is_rejected(self) -> None:
         relative = (
             "toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/"
