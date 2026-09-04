@@ -77,7 +77,8 @@ cmake -S "$project_root/cmake/simpleperf-linux-aarch64" -B "$build_dir" -G Ninja
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE="$gcc_toolchain" \
     -DNDK_PROJECT_ROOT="$project_root"
-cmake --build "$build_dir" --parallel "$jobs" --target simpleperf_report
+cmake --build "$build_dir" --parallel "$jobs" \
+    --target simpleperf_report rust_demangle_smoke
 install -m 0755 "$build_dir/libsimpleperf_report.so" \
     "$install_dir/libsimpleperf_report.so"
 file "$install_dir/libsimpleperf_report.so"

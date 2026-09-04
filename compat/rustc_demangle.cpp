@@ -1,26 +1,45 @@
-#include <cxxabi.h>
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#include "llvm/Demangle/Demangle.h"
 
 #include <cstdlib>
 #include <cstring>
 
 extern "C" char* rustc_demangle(const char* mangled, char* output, size_t* length, int* status) {
-  // Legacy Rust symbols use the Itanium encoding. New v0 symbols return the
-  // same failure code as rustc-demangle when this compatibility fallback
-  // cannot decode them.
-  char* result = abi::__cxa_demangle(mangled, nullptr, nullptr, status);
-  if (result == nullptr || output == nullptr || length == nullptr) return result;
-  size_t needed = strlen(result) + 1;
+  if (mangled == nullptr || (output != nullptr && (length == nullptr || *length == 0))) {
+    if (status != nullptr) *status = -3;
+    return nullptr;
+  }
+
+  char* demangled = llvm::rustDemangle(mangled);
+  if (demangled == nullptr) {
+    // Rust's legacy mangling is based on the Itanium C++ ABI (`_ZN...E`).
+    demangled = llvm::itaniumDemangle(mangled);
+  }
+  if (demangled == nullptr) {
+    if (status != nullptr) *status = -2;
+    return nullptr;
+  }
+
+  const size_t needed = std::strlen(demangled) + 1;
+  if (output == nullptr) {
+    if (length != nullptr) *length = needed;
+    if (status != nullptr) *status = 0;
+    return demangled;
+  }
+
   if (*length < needed) {
-    free(output);
-    output = static_cast<char*>(malloc(needed));
-    if (output == nullptr) {
-      free(result);
+    char* resized = static_cast<char*>(std::realloc(output, needed));
+    if (resized == nullptr) {
+      std::free(demangled);
       if (status != nullptr) *status = -1;
       return nullptr;
     }
+    output = resized;
     *length = needed;
   }
-  memcpy(output, result, needed);
-  free(result);
+  std::memcpy(output, demangled, needed);
+  std::free(demangled);
+  if (status != nullptr) *status = 0;
   return output;
 }

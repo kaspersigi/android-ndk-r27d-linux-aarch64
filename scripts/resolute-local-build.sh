@@ -27,9 +27,9 @@ Environment:
   REFERENCE_NDK_URL         Official reference archive URL override.
   REFERENCE_NDK_SHA256      Expected reference archive SHA-256 override.
 
-If REFERENCE_NDK is unset, an existing /mnt/develop/android-ndk-r27d is used.
-Otherwise the official archive is downloaded, checksum-verified, and extracted
-under REFERENCE_NDK_CACHE_DIR.
+If REFERENCE_NDK is unset, the official archive is downloaded or reused from
+the cache, checksum-verified, and freshly extracted under
+REFERENCE_NDK_CACHE_DIR. An extracted local tree is never selected implicitly.
 
 Outputs:
   dist/android-ndk-r27d/
@@ -174,7 +174,7 @@ fi
 
 reference_is_valid() {
     local candidate=$1
-    local actual_revision
+    local actual_entry_count actual_revision
     [[ -f "$candidate/source.properties" ]] || return 1
     [[ -d "$candidate/toolchains/llvm/prebuilt/linux-x86_64" ]] || return 1
     actual_revision=$(awk -F= \
@@ -183,7 +183,17 @@ reference_is_valid() {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
             print value
         }' "$candidate/source.properties")
-    [[ "$actual_revision" == "$reference_revision" ]]
+    [[ "$actual_revision" == "$reference_revision" ]] || return 1
+
+    # The checksum-pinned r27d archive has exactly 9,276 entries below its
+    # top-level directory. Reject locally generated Python bytecode and any
+    # other additions or removals before the tree can define package layout.
+    actual_entry_count=$(find "$candidate" -mindepth 1 -printf . | wc -c)
+    [[ "$actual_entry_count" == "9276" ]] || return 1
+    ! find "$candidate" -type f \( -name '*.pyc' -o -name '*.pyo' \) \
+        -print -quit | grep -q . || return 1
+    ! find "$candidate" -type d -name __pycache__ -not -empty \
+        -print -quit | grep -q .
 }
 
 reference_cache_dir=${REFERENCE_NDK_CACHE_DIR:-$project_root/.deps}
@@ -192,20 +202,14 @@ reference_sha256=${REFERENCE_NDK_SHA256:-$reference_sha256_default}
 
 if [[ -n "${REFERENCE_NDK:-}" ]]; then
     reference_ndk=$REFERENCE_NDK
-elif reference_is_valid /mnt/develop/android-ndk-r27d; then
-    reference_ndk=/mnt/develop/android-ndk-r27d
-else
-    reference_ndk="$reference_cache_dir/$package_name"
-fi
-
-if ! reference_is_valid "$reference_ndk"; then
-    if [[ -n "${REFERENCE_NDK:-}" ]]; then
-        echo "error: REFERENCE_NDK is not the official r27d Linux package: $reference_ndk" >&2
+    if ! reference_is_valid "$reference_ndk"; then
+        echo "error: REFERENCE_NDK is not a clean official r27d Linux tree: $reference_ndk" >&2
+        echo "       use the default checksum-pinned archive or restore the exact 9,276-entry layout" >&2
         exit 1
     fi
-
+else
     mkdir -p "$reference_cache_dir"
-    reference_archive="$reference_cache_dir/android-ndk-r27d-linux-x86_64.zip"
+    reference_archive="$reference_cache_dir/android-ndk-r27d-linux.zip"
     expected_checksum="$reference_sha256  $reference_archive"
     if [[ -f "$reference_archive" ]] && \
        ! printf '%s\n' "$expected_checksum" | sha256sum --check --status; then
@@ -225,6 +229,10 @@ if ! reference_is_valid "$reference_ndk"; then
         mv "$temporary_archive" "$reference_archive"
     fi
 
+    # Never trust a previously extracted directory. Recreate it from the
+    # checksum-verified archive for every build so generated files cannot
+    # silently become part of the reference inventory.
+    reference_ndk="$reference_cache_dir/$package_name"
     temporary_reference=$(mktemp -d "$reference_cache_dir/.android-ndk-r27d.XXXXXX")
     cleanup_reference() {
         if [[ -n "${temporary_reference:-}" && -d "$temporary_reference" ]]; then
@@ -237,10 +245,7 @@ if ! reference_is_valid "$reference_ndk"; then
         echo "error: downloaded archive is not the expected Android NDK r27d package" >&2
         exit 1
     fi
-    if [[ -e "$reference_ndk" ]]; then
-        echo "error: invalid cached reference path already exists: $reference_ndk" >&2
-        exit 1
-    fi
+    rm -rf -- "$reference_ndk"
     mv "$temporary_reference/$package_name" "$reference_ndk"
     rmdir "$temporary_reference"
     temporary_reference=
@@ -298,12 +303,26 @@ archive="$project_root/dist/$archive_name"
 checksum="$archive.sha256"
 (cd "$project_root/dist" && sha256sum --check "$(basename "$checksum")")
 unzip -tq "$archive"
-if unzip -Z1 "$archive" | awk -F/ 'NF && $1 != "android-ndk-r27d" { exit 1 }'; then
-    :
-else
-    echo "error: archive contains a path outside $package_name/" >&2
+archive_probe=$(mktemp -d "$project_root/build/archive-validation.XXXXXX")
+cleanup_archive_probe() {
+    rm -rf -- "$archive_probe"
+}
+trap cleanup_archive_probe EXIT
+unzip -q "$archive" -d "$archive_probe"
+mapfile -d '' -t archive_roots < <(
+    find "$archive_probe" -mindepth 1 -maxdepth 1 -print0
+)
+if (( ${#archive_roots[@]} != 1 )) ||
+   [[ "${archive_roots[0]}" != "$archive_probe/$package_name" ]] ||
+   [[ ! -d "$archive_probe/$package_name" ]] ||
+   [[ -L "$archive_probe/$package_name" ]]; then
+    echo "error: archive must contain exactly one top-level $package_name/ directory" >&2
     exit 1
 fi
+PYTHONDONTWRITEBYTECODE=1 python3 "$project_root/scripts/compare-extracted-tree.py" \
+    "$project_root/dist/$package_name" "$archive_probe/$package_name"
+cleanup_archive_probe
+trap - EXIT
 
 echo
 echo "Build complete:"

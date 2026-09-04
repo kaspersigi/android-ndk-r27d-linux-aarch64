@@ -1,0 +1,11 @@
+Android NDK r27d for Linux AArch64
+Copyright 2026 project contributors
+
+The repository-owned build scripts, compatibility sources, tests, patches, and
+documentation are licensed under the Apache License, Version 2.0, except where
+an individual file states a different license.
+
+The produced package incorporates software from the Android Open Source
+Project, LLVM Project, and other upstream projects. Their license and notice
+files remain in the source checkouts or assembled NDK at the corresponding
+upstream paths. This community build is not produced or endorsed by Google.

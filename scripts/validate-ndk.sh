@@ -4,6 +4,11 @@ export PYTHONDONTWRITEBYTECODE=1
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 package_root=${1:-$project_root/dist/android-ndk-r27d}
+if [[ ! -d "$package_root" ]]; then
+    echo "Invalid package root: $package_root" >&2
+    exit 1
+fi
+package_root=$(realpath -e -- "$package_root")
 toolchain="$package_root/toolchains/llvm/prebuilt/linux-aarch64"
 host_prebuilt="$package_root/prebuilt/linux-aarch64"
 shader_tools="$package_root/shader-tools/linux-aarch64"
@@ -15,6 +20,8 @@ if [[ ! -x "$toolchain/bin/clang" ]]; then
     echo "Invalid package root: $package_root" >&2
     exit 1
 fi
+
+python3 -B "$project_root/tests/compare_reference_layout_test.py"
 
 "$project_root/scripts/compare-reference-layout.py" "$package_root" \
     --reference "${REFERENCE_NDK:-/mnt/develop/android-ndk-r27d}"
@@ -73,6 +80,7 @@ host_run "$toolchain/python3/bin/python3.11" \
     "$project_root/tests/simpleperf_report_smoke.py" \
     "$simpleperf_tools/libsimpleperf_report.so" \
     "$project_root/sources/simpleperf-prebuilt/test/testdata/perf.data"
+host_run "$project_root/build/simpleperf-report-linux-aarch64-gcc/rust_demangle_smoke"
 
 targets=(
     armv7a-linux-androideabi21

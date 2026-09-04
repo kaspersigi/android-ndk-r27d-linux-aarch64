@@ -7,9 +7,10 @@ toolchain="$package_root/toolchains/llvm/prebuilt/linux-aarch64"
 archive_list=$(mktemp "$project_root/build/aarch64-host-archives.XXXXXX")
 audit_dir=$(mktemp -d "$project_root/build/aarch64-archive-audit.XXXXXX")
 bad_members=$(mktemp "$project_root/build/aarch64-bad-members.XXXXXX")
+member_list=$(mktemp "$project_root/build/aarch64-archive-members.XXXXXX")
 cleanup() {
     rm -rf -- "$audit_dir"
-    rm -f -- "$archive_list" "$bad_members"
+    rm -f -- "$archive_list" "$bad_members" "$member_list"
 }
 trap cleanup EXIT
 
@@ -32,17 +33,58 @@ done
 
 : > "$bad_members"
 archive_count=0
+archive_member_count=0
 elf_member_count=0
+
+check_member_file() {
+    local archive=$1 member=$2 occurrence=$3 path=$4 description
+    description=$(file -b "$path")
+    if [[ "$description" != *'ELF '* ]]; then
+        return
+    fi
+    elf_member_count=$((elf_member_count + 1))
+    if [[ "$description" != *'ARM aarch64'* ]]; then
+        printf '%s(%s occurrence %s): %s\n' \
+            "$archive" "$member" "$occurrence" "$description" >> "$bad_members"
+    fi
+}
+
 while IFS= read -r archive; do
     find "$audit_dir" -mindepth 1 -delete
     absolute_archive=$(realpath "$archive")
+    aarch64-linux-gnu-ar t "$absolute_archive" > "$member_list"
+    member_count=$(wc -l < "$member_list")
+    archive_member_count=$((archive_member_count + member_count))
+
+    # A normal extraction leaves the final occurrence when an archive contains
+    # duplicate member names. Check that unique set first.
     (cd "$audit_dir" && aarch64-linux-gnu-ar x "$absolute_archive")
-    while IFS= read -r description; do
-        elf_member_count=$((elf_member_count + 1))
-        if [[ "$description" != *'ARM aarch64'* ]]; then
-            printf '%s: %s\n' "$archive" "$description" >> "$bad_members"
-        fi
-    done < <(find "$audit_dir" -type f -print0 | xargs -0 -r file | rg 'ELF ' || true)
+    while IFS= read -r -d '' member_path; do
+        member_name=${member_path#"$audit_dir/"}
+        check_member_file "$archive" "$member_name" final "$member_path"
+    done < <(find "$audit_dir" -type f -print0)
+
+    # GNU ar overwrites earlier duplicate names during normal extraction.
+    # Extract and inspect every earlier occurrence explicitly with the N
+    # modifier so no archive member is skipped.
+    duplicate_index=0
+    while read -r occurrence_count member_name; do
+        (( occurrence_count > 1 )) || continue
+        for (( occurrence=1; occurrence < occurrence_count; occurrence++ )); do
+            duplicate_dir="$audit_dir/.duplicate-$duplicate_index"
+            mkdir "$duplicate_dir"
+            (cd "$duplicate_dir" && \
+                aarch64-linux-gnu-ar xN "$occurrence" "$absolute_archive" "$member_name")
+            mapfile -d '' -t extracted_members < <(find "$duplicate_dir" -type f -print0)
+            if (( ${#extracted_members[@]} != 1 )); then
+                echo "error: failed to extract $member_name occurrence $occurrence from $archive" >&2
+                exit 1
+            fi
+            check_member_file "$archive" "$member_name" "$occurrence" \
+                "${extracted_members[0]}"
+            duplicate_index=$((duplicate_index + 1))
+        done
+    done < <(LC_ALL=C sort "$member_list" | uniq -c)
     archive_count=$((archive_count + 1))
 done < "$archive_list"
 
@@ -53,4 +95,5 @@ if [[ -s "$bad_members" ]]; then
 fi
 
 echo "aarch64_host_archives=$archive_count"
+echo "aarch64_archive_members=$archive_member_count"
 echo "aarch64_elf_archive_members=$elf_member_count"

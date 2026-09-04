@@ -74,6 +74,7 @@ target_include_directories(unwindstack PUBLIC
   "${ROOT}/sources/system-unwinding/libunwindstack/include"
   "${ROOT}/sources/system-unwinding/libunwindstack"
   "${ROOT}/sources/rustc-demangle-capi/include"
+  "${ROOT}/sources/llvm-project/llvm/include"
   "${ROOT}/sources/zstd/lib")
 target_link_libraries(unwindstack PUBLIC android_base procinfo lzma_sdk libzstd_static
   "${DEPS}/lib/libz.a")
@@ -129,3 +130,13 @@ set_target_properties(simpleperf_report PROPERTIES OUTPUT_NAME simpleperf_report
   PREFIX "lib" LINK_FLAGS "-Wl,--gc-sections -Wl,--exclude-libs,ALL")
 target_link_options(simpleperf_report PRIVATE -static-libstdc++ -static-libgcc)
 target_link_libraries(simpleperf_report PRIVATE simpleperf_core dl m rt pthread)
+
+add_executable(rust_demangle_smoke
+  "${ROOT}/tests/rust_demangle_smoke.cpp"
+  "${ROOT}/compat/rustc_demangle.cpp")
+target_include_directories(rust_demangle_smoke PRIVATE
+  "${ROOT}/sources/rustc-demangle-capi/include"
+  "${ROOT}/sources/llvm-project/llvm/include")
+target_link_options(rust_demangle_smoke PRIVATE -static-libstdc++ -static-libgcc)
+target_link_libraries(rust_demangle_smoke PRIVATE
+  "${ROOT}/out/simpleperf-linux-aarch64/libsimpleperf_readelf.a")

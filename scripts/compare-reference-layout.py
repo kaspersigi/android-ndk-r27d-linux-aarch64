@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
+import hashlib
 import os
 from pathlib import Path
 import stat
@@ -16,6 +18,108 @@ HOST_PREFIXES = (
     ("shader-tools/linux-x86_64", "shader-tools/linux-aarch64"),
     ("simpleperf/bin/linux/x86_64", "simpleperf/bin/linux/aarch64"),
 )
+
+EXPECTED_REFERENCE_ENTRIES = 9276
+EXPECTED_REFERENCE_REVISION = "27.3.13750724"
+
+REFERENCE_X86_64_ROOTS = tuple(source for source, _ in HOST_PREFIXES)
+REFERENCE_AARCH64_ROOTS = tuple(target for _, target in HOST_PREFIXES)
+
+HOST_SCRIPT_DIFFERENCES = {
+    "build/cmake/android-legacy.toolchain.cmake",
+    "build/cmake/android.toolchain.cmake",
+    "build/ndk-build",
+    "build/tools/make_standalone_toolchain.py",
+    "build/tools/ndk_bin_common.sh",
+    "ndk-gdb",
+    "ndk-lldb",
+    "ndk-stack",
+    "ndk-which",
+}
+
+HOST_GENERATED_CONTENT_PREFIXES = (
+    "toolchains/llvm/prebuilt/linux-aarch64/lib/aarch64-unknown-linux-gnu",
+    "toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu",
+)
+
+HOST_GENERATED_CONTENT_FILES = {
+    "prebuilt/linux-aarch64/lib/libyasm.a",
+    "toolchains/llvm/prebuilt/linux-aarch64/lib/libbolt_rt_instr.a",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/include/python3.11/pyconfig.h",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11-embed.pc",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/pkgconfig/python-3.11.pc",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3/lib/python3.11/_sysconfigdata__linux_aarch64-linux-gnu.py",
+}
+
+HOST_ELF_CONTENT_PREFIXES = (
+    "prebuilt/linux-aarch64/bin",
+    "shader-tools/linux-aarch64",
+    "simpleperf/bin/linux/aarch64",
+    "toolchains/llvm/prebuilt/linux-aarch64/bin",
+    "toolchains/llvm/prebuilt/linux-aarch64/python3",
+    "toolchains/llvm/prebuilt/linux-aarch64/lib/python3.11",
+)
+
+HOST_ELF_CONTENT_DIRECTORIES = {
+    "toolchains/llvm/prebuilt/linux-aarch64/lib",
+    "toolchains/llvm/prebuilt/linux-aarch64/musl/lib",
+}
+
+
+@dataclass(frozen=True)
+class Entry:
+    kind: str
+    source: Path
+    mode: int | None
+    link: str | None = None
+    digest: str | None = None
+
+
+def package_revision(root: Path) -> str | None:
+    source_properties = root / "source.properties"
+    try:
+        lines = source_properties.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return None
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "Pkg.Revision":
+            return value.strip()
+    return None
+
+
+def reference_identity_errors(root: Path) -> list[str]:
+    errors: list[str] = []
+    revision = package_revision(root)
+    if revision != EXPECTED_REFERENCE_REVISION:
+        errors.append(
+            "source.properties must report "
+            f"Pkg.Revision = {EXPECTED_REFERENCE_REVISION}"
+        )
+
+    for relative in REFERENCE_X86_64_ROOTS:
+        if not (root / relative).is_dir():
+            errors.append(f"missing official x86_64 host directory: {relative}")
+    for relative in REFERENCE_AARCH64_ROOTS:
+        if (root / relative).exists() or (root / relative).is_symlink():
+            errors.append(f"unexpected AArch64 host directory: {relative}")
+
+    for base, dirs, files in os.walk(root, followlinks=False):
+        base_path = Path(base)
+        for name in files:
+            if name.endswith((".pyc", ".pyo")):
+                errors.append(
+                    "generated Python bytecode is not allowed in the reference: "
+                    f"{(base_path / name).relative_to(root).as_posix()}"
+                )
+                return errors
+        if base_path.name == "__pycache__" and (dirs or files):
+            errors.append(
+                "non-empty __pycache__ is not allowed in the reference: "
+                f"{base_path.relative_to(root).as_posix()}"
+            )
+            return errors
+    return errors
 
 
 def map_host_name(value: str) -> str:
@@ -54,10 +158,59 @@ def entry_type(path: Path) -> str:
     return "other"
 
 
-def inventory(
-    root: Path, normalize: bool
-) -> dict[str, tuple[str, str | None, int | None]]:
-    result: dict[str, tuple[str, str | None, int | None]] = {}
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def elf_machine(path: Path) -> int | None:
+    with path.open("rb") as stream:
+        header = stream.read(20)
+    if len(header) < 20 or header[:4] != b"\x7fELF":
+        return None
+    if header[5] == 1:
+        byteorder = "little"
+    elif header[5] == 2:
+        byteorder = "big"
+    else:
+        return None
+    return int.from_bytes(header[18:20], byteorder)
+
+
+def is_rebuilt_host_elf_path(relative: str) -> bool:
+    if any(
+        relative.startswith(prefix + "/") for prefix in HOST_ELF_CONTENT_PREFIXES
+    ):
+        return True
+    parent, separator, _ = relative.rpartition("/")
+    return bool(separator) and parent in HOST_ELF_CONTENT_DIRECTORIES
+
+
+def content_difference_is_expected(
+    relative: str, expected: Entry, actual: Entry
+) -> bool:
+    if relative in HOST_SCRIPT_DIFFERENCES | HOST_GENERATED_CONTENT_FILES:
+        return True
+    if any(
+        relative == prefix or relative.startswith(prefix + "/")
+        for prefix in HOST_GENERATED_CONTENT_PREFIXES
+    ):
+        return True
+    # A machine transition is valid only in an explicitly identified host
+    # position. Android target ELFs below the host-tagged sysroot and Clang
+    # runtime directories must remain byte-for-byte identical.
+    return (
+        is_rebuilt_host_elf_path(relative)
+        and elf_machine(expected.source) == 62
+        and elf_machine(actual.source) == 183
+    )
+
+
+def inventory(root: Path, normalize: bool) -> dict[str, Entry]:
+    result: dict[str, Entry] = {}
     for base, dirs, files in os.walk(root, followlinks=False):
         base_path = Path(base)
         names = sorted(dirs + files)
@@ -71,7 +224,16 @@ def inventory(
             mode = None if kind == "symlink" else stat.S_IMODE(path.lstat().st_mode)
             if normalize and link is not None:
                 link = map_link_target(link)
-            result[relative] = (kind, link, mode)
+            if relative in result:
+                raise ValueError(f"normalized path collision: {relative}")
+            digest = file_digest(path) if kind == "file" else None
+            result[relative] = Entry(
+                kind=kind,
+                source=path,
+                mode=mode,
+                link=link,
+                digest=digest,
+            )
     return result
 
 
@@ -90,26 +252,57 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=100)
     args = parser.parse_args()
 
-    expected = inventory(args.reference, normalize=True)
-    actual = inventory(args.candidate, normalize=False)
+    try:
+        reference_root = args.reference.resolve(strict=True)
+        candidate_root = args.candidate.resolve(strict=True)
+    except OSError as error:
+        print(f"error: cannot resolve input tree: {error}", file=sys.stderr)
+        return 1
+
+    if reference_root == candidate_root:
+        print(
+            "error: candidate and reference must be different directories",
+            file=sys.stderr,
+        )
+        return 1
+
+    identity_errors = reference_identity_errors(reference_root)
+    if identity_errors:
+        for error in identity_errors:
+            print(
+                f"error: invalid official Linux x86_64 reference: {error}",
+                file=sys.stderr,
+            )
+        return 1
+
+    expected = inventory(reference_root, normalize=True)
+    actual = inventory(candidate_root, normalize=False)
     missing = sorted(expected.keys() - actual.keys())
     extra = sorted(actual.keys() - expected.keys())
     common = sorted(expected.keys() & actual.keys())
     type_mismatches = [
-        path for path in common if expected[path][0] != actual[path][0]
+        path for path in common if expected[path].kind != actual[path].kind
     ]
     link_mismatches = [
         path
         for path in common
-        if expected[path][0] == actual[path][0] == "symlink"
-        and expected[path][1] != actual[path][1]
+        if expected[path].kind == actual[path].kind == "symlink"
+        and expected[path].link != actual[path].link
     ]
     mode_mismatches = [
         path
         for path in common
-        if expected[path][0] == actual[path][0] != "symlink"
-        and expected[path][2] != actual[path][2]
+        if expected[path].kind == actual[path].kind != "symlink"
+        and expected[path].mode != actual[path].mode
     ]
+    content_mismatches = [
+        path
+        for path in common
+        if expected[path].kind == actual[path].kind == "file"
+        and expected[path].digest != actual[path].digest
+        and not content_difference_is_expected(path, expected[path], actual[path])
+    ]
+    reference_entry_count_mismatch = len(expected) != EXPECTED_REFERENCE_ENTRIES
 
     print(f"reference_entries={len(expected)}")
     print(f"candidate_entries={len(actual)}")
@@ -119,32 +312,50 @@ def main() -> int:
         ("type_mismatches", type_mismatches),
         ("link_mismatches", link_mismatches),
         ("mode_mismatches", mode_mismatches),
+        ("content_mismatches", content_mismatches),
     ):
         print(f"{label}={len(values)}")
         for value in values[: args.limit]:
             if label == "link_mismatches":
                 print(
-                    f"  {value}: expected={expected[value][1]!r} "
-                    f"actual={actual[value][1]!r}"
+                    f"  {value}: expected={expected[value].link!r} "
+                    f"actual={actual[value].link!r}"
                 )
             elif label == "type_mismatches":
                 print(
-                    f"  {value}: expected={expected[value][0]} "
-                    f"actual={actual[value][0]}"
+                    f"  {value}: expected={expected[value].kind} "
+                    f"actual={actual[value].kind}"
                 )
             elif label == "mode_mismatches":
                 print(
-                    f"  {value}: expected={expected[value][2]:#05o} "
-                    f"actual={actual[value][2]:#05o}"
+                    f"  {value}: expected={expected[value].mode:#05o} "
+                    f"actual={actual[value].mode:#05o}"
+                )
+            elif label == "content_mismatches":
+                print(
+                    f"  {value}: expected_sha256={expected[value].digest} "
+                    f"actual_sha256={actual[value].digest}"
                 )
             else:
                 print(f"  {value}")
 
-    return (
-        1
-        if missing or extra or type_mismatches or link_mismatches or mode_mismatches
-        else 0
-    )
+    if reference_entry_count_mismatch:
+        print(
+            "reference_entry_count_mismatch=1 "
+            f"expected={EXPECTED_REFERENCE_ENTRIES} actual={len(expected)}"
+        )
+    else:
+        print("reference_entry_count_mismatch=0")
+
+    return 1 if (
+        reference_entry_count_mismatch
+        or missing
+        or extra
+        or type_mismatches
+        or link_mismatches
+        or mode_mismatches
+        or content_mismatches
+    ) else 0
 
 
 if __name__ == "__main__":

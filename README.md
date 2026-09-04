@@ -61,14 +61,42 @@ export ANDROID_NDK_HOME=/path/to/android-ndk-r27d
 
 The current host binaries require glibc 2.43 or newer.
 
+## Repository dependencies
+
+This repository is an independently buildable producer of the NDK archive.
+It does not depend on the Android SDK assembly repository.
+
+- Its upstream binary reference is Google's checksum-pinned
+  `android-ndk-r27d-linux.zip`. Architecture-independent Android target files
+  are retained from that package, while Linux host tools are rebuilt for
+  AArch64 from pinned upstream sources.
+- Its release output, `android-ndk-r27d-linux.zip`, is a downstream input of
+  [`kaspersigi/android-sdk-linux-aarch64`](https://github.com/kaspersigi/android-sdk-linux-aarch64).
+  The SDK installs it as `ndk/27.3.13750724` without rebuilding the NDK.
+- The SDK resolves this repository's latest published full GitHub Release and
+  verifies the ZIP against the `.sha256` asset from that same Release. Local
+  builds and source commits without a published Release are not selected.
+- Release tags such as `v1.0.1` identify revisions of this repository's build
+  scripts. They do not change the locked NDK source version, which remains
+  r27d (`27.3.13750724`).
+
+After changing this project, publish and validate a new NDK Release first. The
+next SDK build selects it automatically as the latest Release; no SDK source
+change is needed unless the repository, asset name, or NDK source version
+changes.
+
 ## Official reference package
 
 Assembly requires Google's official Linux x86_64 NDK r27d package as the
-reference tree. The build script chooses it in this order:
+reference tree. By default, the build script verifies the pinned archive and
+freshly extracts it for every build. This prevents generated files in a reused
+directory from changing the package inventory.
 
-1. `REFERENCE_NDK`, when explicitly set.
-2. `/mnt/develop/android-ndk-r27d`, when it is a valid r27d installation.
-3. A checksum-verified download cached below `.deps/`.
+An existing extracted tree is used only when `REFERENCE_NDK` is explicitly
+set. It must have the exact 9,276-entry official layout and must not contain
+generated Python bytecode. The comparison tool independently requires all four
+official `linux-x86_64` host roots, rejects AArch64 host roots, and rejects a
+candidate directory passed as its own reference.
 
 The expected official archive is:
 
@@ -90,7 +118,7 @@ REFERENCE_NDK=/path/to/android-ndk-r27d \
 | --- | --- | --- |
 | `CLEAN` | `0` | Set to `1` to remove `sources/`, `build/`, `out/`, and `dist/` before building |
 | `JOBS` | `nproc` | Number of parallel build jobs |
-| `REFERENCE_NDK` | auto-detected | Path to an extracted official Linux x86_64 r27d package |
+| `REFERENCE_NDK` | unset | Explicit path to an exact, clean official Linux x86_64 r27d package |
 | `REFERENCE_NDK_CACHE_DIR` | `.deps/` | Download and extraction cache for the official reference package |
 | `REFERENCE_NDK_URL` | official URL | Override the reference archive URL |
 | `REFERENCE_NDK_SHA256` | pinned checksum | Override the expected reference archive checksum |
@@ -103,6 +131,9 @@ current build trees:
 ```bash
 JOBS=8 ./scripts/resolute-local-build.sh
 ```
+
+Local builds use all processors reported by `nproc` unless `JOBS` is set.
+GitHub Actions explicitly uses `JOBS=4` for the free hosted runner.
 
 ## What is built
 
@@ -139,21 +170,24 @@ or through QEMU on the supported x86_64 build host. It verifies:
 
 - transparent AArch64 child-process execution through `qemu-user-binfmt`,
   which Clang needs to launch its own `clang-18` and `ld.lld` binaries;
-- the normalized package inventory, entry types, permissions, and symlink
-  targets against the official Linux x86_64 package;
+- the normalized package inventory, entry types, permissions, symlink targets,
+  and architecture-independent file contents against the official Linux
+  x86_64 package;
 - that Linux host ELF files and host archive members are AArch64;
 - Clang, LLD, LLDB, BOLT, LLVM target registration, Python, and LLDB's Python
   bindings;
 - GNU Make, Yasm, shader compilation, SPIR-V validation, and Simpleperf report
-  processing;
+  processing, including legacy and Rust v0 symbol demangling;
 - direct C and C++ linking for ARM, AArch64, x86, x86_64, and RISC-V Android
   targets;
 - Android CMake toolchain integration for `arm64-v8a`;
 - `ndk-build` output for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
 
-The reference and candidate entry counts must match exactly. This is a
-one-for-one layout check after host-name normalization, not a claim that rebuilt
-host binaries are byte-identical to Google's x86_64 binaries.
+The reference must contain the fixed 9,276-entry r27d inventory, and the
+candidate count must match it exactly. After host-name normalization, ordinary
+files are SHA-256 checked. Only the documented patched/generated files and
+actual x86_64-to-AArch64 ELF replacements may differ; rebuilt host binaries are
+not expected to be byte-identical to Google's x86_64 binaries.
 
 ## GitHub Actions release
 
@@ -162,15 +196,16 @@ host binaries are byte-identical to Google's x86_64 binaries.
 
 1. installs dependencies with the same repository script;
 2. builds, assembles, and validates the package;
-3. uploads the ZIP and checksum as a one-day workflow artifact;
-4. downloads and verifies both files in a separate publish job;
-5. creates or updates the corresponding GitHub Release.
+3. verifies that extracting the ZIP reproduces the assembled tree exactly;
+4. uploads the ZIP and checksum as a one-day workflow artifact;
+5. downloads and verifies both files in a separate publish job;
+6. creates or updates the corresponding GitHub Release.
 
-Example release tag:
+Example release tag (choose a new repository release version):
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The published assets are:
@@ -198,6 +233,12 @@ android-ndk-r27d-linux.zip.sha256
 
 See [`LINUX_AARCH64_BUILD_INFO.md`](LINUX_AARCH64_BUILD_INFO.md) for the
 technical build boundary included with this repository.
+
+## License
+
+Repository-owned code is licensed under the Apache License 2.0; see
+[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Upstream components retain their
+original licenses and notices in their corresponding source and package paths.
 
 ## Component scripts
 

@@ -29,13 +29,14 @@ jobs:
       - name: Cache official Android NDK r27d reference
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
-          path: ${{ runner.temp }}/android-ndk-r27d
-          key: android-ndk-r27d-linux-x86_64-${{ env.REFERENCE_NDK_SHA256 }}
+          path: ${{ runner.temp }}/android-ndk-r27d-linux.zip
+          key: android-ndk-r27d-linux-${{ env.REFERENCE_NDK_SHA256 }}
       - name: Install Ubuntu 26.04 dependencies
         run: ./scripts/resolute-install-deps.sh
       - name: Build, validate, and package
         env:
           CLEAN: "1"
+          JOBS: "4"
           REFERENCE_NDK_CACHE_DIR: ${{ runner.temp }}
           SOURCE_DATE_EPOCH: "1751932800"
         run: ./scripts/resolute-local-build.sh

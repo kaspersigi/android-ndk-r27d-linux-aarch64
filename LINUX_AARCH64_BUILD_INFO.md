@@ -21,9 +21,10 @@ Google's PGO/BOLT/MLGO optimization pipeline and is not byte-for-byte identical
 to an official NDK.
 
 The normalized package inventory is one-for-one with the official Linux
-x86_64 tree: 9,279 entries, with no missing paths, extra paths, type changes,
+x86_64 tree: 9,276 entries, with no missing paths, extra paths, type changes,
 permission changes, or symlink-target changes after host-name normalization.
-Validation covers Clang/LLD/LLDB/Python, shader tools, Simpleperf reporting,
+Validation covers Clang/LLD/LLDB/Python, shader tools, Simpleperf reporting and
+legacy plus Rust v0 symbol demangling,
 direct C/C++ linking for all five r27d target architectures, CMake, ndk-build,
 149 host ELF files, and 47 host static archives.
 
