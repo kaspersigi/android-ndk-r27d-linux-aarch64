@@ -4,6 +4,8 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 package_name=android-ndk-r27d
 archive_name=android-ndk-r27d-linux.zip
 reference_revision=27.3.13750724
@@ -60,23 +62,9 @@ require_boolean() {
 
 allow_unsupported_host=${ALLOW_UNSUPPORTED_HOST:-0}
 clean=${CLEAN:-0}
-host_jobs=$(nproc)
-if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
-    jobs=${JOBS:-$host_jobs}
-else
-    if [[ ${JOBS+x} == x && "$JOBS" != "$host_jobs" ]]; then
-        echo "error: local builds must use all $host_jobs processors reported by nproc" >&2
-        echo "       JOBS is reserved for GitHub Actions resource limits" >&2
-        exit 2
-    fi
-    jobs=$host_jobs
-fi
+jobs=$(resolve_build_jobs)
 require_boolean ALLOW_UNSUPPORTED_HOST "$allow_unsupported_host"
 require_boolean CLEAN "$clean"
-if [[ ! "$jobs" =~ ^[1-9][0-9]*$ ]]; then
-    echo "error: JOBS must be a positive integer" >&2
-    exit 2
-fi
 
 if [[ ! -r /etc/os-release ]]; then
     echo "error: cannot identify the host because /etc/os-release is unavailable" >&2

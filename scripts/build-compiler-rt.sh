@@ -2,6 +2,8 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 source_root="$project_root/sources/llvm-project"
 source_dir="$source_root/compiler-rt"
 build_dir="$project_root/build/compiler-rt-linux-aarch64"
@@ -9,7 +11,8 @@ install_dir="$project_root/out/compiler-rt-linux-aarch64"
 reference_dir=${REFERENCE_NDK:-/mnt/develop/android-ndk-r27d}/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/18/lib/x86_64-unknown-linux-gnu
 toolchain_file="$project_root/cmake/linux-aarch64-toolchain.cmake"
 compat_patch="$project_root/patches/compiler-rt-linux-aarch64.patch"
-jobs=${JOBS:-$(nproc)}
+jobs=$(resolve_build_jobs)
+libstdcxx_archive=$(aarch64-linux-gnu-g++ -print-file-name=libstdc++.a)
 
 for required in "$source_dir/CMakeLists.txt" "$reference_dir" "$compat_patch"; do
     if [[ ! -e "$required" ]]; then
@@ -17,6 +20,10 @@ for required in "$source_dir/CMakeLists.txt" "$reference_dir" "$compat_patch"; d
         exit 1
     fi
 done
+if [[ ! -f "$libstdcxx_archive" ]]; then
+    echo "Missing AArch64 static libstdc++: $libstdcxx_archive" >&2
+    exit 1
+fi
 
 if ! rg -q 'ALL_MEMPROF_SUPPORTED_ARCH.*ARM64' \
     "$source_dir/cmake/Modules/AllSupportedArchDefs.cmake"; then
@@ -35,7 +42,8 @@ cmake -S "$source_dir" -B "$build_dir" -G Ninja \
     -DCOMPILER_RT_BUILD_PROFILE=ON \
     -DCOMPILER_RT_BUILD_ORC=ON \
     -DCOMPILER_RT_INCLUDE_TESTS=OFF \
-    -DSANITIZER_CXX_ABI=libstdc++ \
+    -DSANITIZER_CXX_ABI=none \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="$libstdcxx_archive" \
     -DLLVM_CMAKE_DIR="$source_root/llvm/cmake/modules"
 cmake --build "$build_dir" --parallel "$jobs"
 

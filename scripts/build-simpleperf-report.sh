@@ -2,7 +2,9 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-jobs=${JOBS:-$(nproc)}
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
+jobs=$(resolve_build_jobs)
 native_protobuf_build="$project_root/build/protobuf-native"
 cross_protobuf_build="$project_root/build/protobuf-linux-aarch64"
 deps_install="$project_root/out/simpleperf-deps-linux-aarch64"

@@ -2,6 +2,8 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 source_dir="$project_root/sources/llvm-project/llvm"
 native_build_dir="$project_root/build/llvm-native-tools-clang"
 cross_build_dir="$project_root/build/llvm-linux-aarch64"
@@ -12,7 +14,7 @@ host_deps="$project_root/out/host-deps-linux-aarch64"
 target_python="$project_root/out/python-linux-aarch64"
 build_python="$project_root/sources/python-prebuilt-reference/bin/python3.11"
 swig="$project_root/out/swig-linux-x86_64/bin/swig"
-jobs=${JOBS:-$(nproc)}
+jobs=$(resolve_build_jobs)
 smallvector_patch="$project_root/patches/llvm-smallvector-include-cstdint.patch"
 x86_mctargetdesc_patch="$project_root/patches/llvm-x86-mctargetdesc-include-cstdint.patch"
 lldb_addressable_bits_patch="$project_root/patches/lldb-addressable-bits-include-cstdint.patch"

@@ -2,10 +2,12 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 source_dir="$project_root/sources/musl"
 build_dir="$project_root/build/musl-linux-aarch64"
 install_dir="$project_root/out/musl-linux-aarch64"
-jobs=${JOBS:-$(nproc)}
+jobs=$(resolve_build_jobs)
 
 mkdir -p "$build_dir" "$install_dir"
 (

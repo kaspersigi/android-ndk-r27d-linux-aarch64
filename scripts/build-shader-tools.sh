@@ -2,11 +2,13 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 source_dir="$project_root/sources/shaderc"
 build_dir="$project_root/build/shader-tools-linux-aarch64"
 install_dir="$project_root/out/shader-tools-linux-aarch64"
 toolchain_file="$project_root/cmake/linux-aarch64-toolchain.cmake"
-jobs=${JOBS:-$(nproc)}
+jobs=$(resolve_build_jobs)
 compatibility_patch="$project_root/patches/glslang-spvbuilder-include-cstdint.patch"
 shaderc_tag_patch="$project_root/patches/shaderc-build-tag-override.patch"
 spirv_tools_tag_patch="$project_root/patches/spirv-tools-build-tag-override.patch"

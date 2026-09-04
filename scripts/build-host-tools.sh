@@ -2,7 +2,9 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-jobs=${JOBS:-$(nproc)}
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
+jobs=$(resolve_build_jobs)
 source_date_epoch=${SOURCE_DATE_EPOCH:-1751932800}
 make_source="$project_root/sources/make"
 yasm_source="$project_root/sources/yasm"

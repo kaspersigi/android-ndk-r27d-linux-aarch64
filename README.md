@@ -61,6 +61,11 @@ export ANDROID_NDK_HOME=/path/to/android-ndk-r27d
 
 The current host binaries require glibc 2.43 or newer.
 
+Host `libc++.so`, `libc++abi.so`, and `libunwind.so` incorporate their LLVM
+ABI, unwinder, and atomic support without relying on unpackaged shared
+libraries. Compiler-rt shared runtimes statically incorporate libstdc++; their
+remaining `libgcc_s.so.1` dependency matches the official Linux x86_64 NDK.
+
 ## Repository dependencies
 
 This repository is an independently buildable producer of the NDK archive.
@@ -172,6 +177,8 @@ or through QEMU on the supported x86_64 build host. It verifies:
   and architecture-independent file contents against the official Linux
   x86_64 package;
 - that Linux host ELF files and host archive members are AArch64;
+- host C++ runtime SONAMEs, direct loadability, and shared-library dependency
+  closure, plus compiler-rt's rejection of an external `libstdc++.so`;
 - Clang, LLD, LLDB, BOLT, LLVM target registration, Python, and LLDB's Python
   bindings;
 - GNU Make, Yasm, shader compilation, SPIR-V validation, and Simpleperf report

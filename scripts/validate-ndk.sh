@@ -13,6 +13,8 @@ toolchain="$package_root/toolchains/llvm/prebuilt/linux-aarch64"
 host_prebuilt="$package_root/prebuilt/linux-aarch64"
 shader_tools="$package_root/shader-tools/linux-aarch64"
 simpleperf_tools="$package_root/simpleperf/bin/linux/aarch64"
+host_runtime_dir="$toolchain/lib/aarch64-unknown-linux-gnu"
+compiler_rt_dir="$toolchain/lib/clang/18/lib/aarch64-unknown-linux-gnu"
 qemu_prefix=${QEMU_LD_PREFIX:-/usr/aarch64-linux-gnu}
 validation_root=$(mktemp -d "$project_root/build/validation.XXXXXX")
 
@@ -65,6 +67,32 @@ case $(uname -m) in
         ;;
 esac
 
+check_needed_libraries() {
+    local path=$1
+    local allow_libgcc=$2
+    local dependency
+
+    while IFS= read -r dependency; do
+        case "$dependency" in
+            libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-aarch64.so.1)
+                ;;
+            libgcc_s.so.1)
+                if [[ "$allow_libgcc" != "1" ]]; then
+                    echo "Unexpected external shared-library dependency in $path: $dependency" >&2
+                    exit 1
+                fi
+                ;;
+            *)
+                echo "Unexpected external shared-library dependency in $path: $dependency" >&2
+                exit 1
+                ;;
+        esac
+    done < <(
+        readelf -d -- "$path" |
+            sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p'
+    )
+}
+
 host_run "$toolchain/bin/clang" --version
 host_run "$toolchain/bin/llvm-config" --targets-built
 host_run "$toolchain/bin/ld.lld" --version
@@ -74,6 +102,33 @@ fi
 host_run "$toolchain/bin/lldb" --version
 host_run "$toolchain/python3/bin/python3.11" -c \
     'import _ctypes, bz2, curses, nis, zlib; print("python-host-ok")'
+
+for name in libc++.so libc++abi.so libunwind.so; do
+    runtime="$host_runtime_dir/$name"
+    [[ -f "$runtime" ]] || {
+        echo "Required host runtime is missing: $runtime" >&2
+        exit 1
+    }
+    readelf -d -- "$runtime" | grep -Fq "Library soname: [$name]" || {
+        echo "Unexpected host-runtime SONAME: $runtime" >&2
+        exit 1
+    }
+    check_needed_libraries "$runtime" 0
+    host_run "$toolchain/python3/bin/python3.11" -c \
+        'import ctypes, sys; ctypes.CDLL(sys.argv[1])' "$runtime"
+done
+
+compiler_rt_shared_count=0
+while IFS= read -r -d '' runtime; do
+    check_needed_libraries "$runtime" 1
+    ((compiler_rt_shared_count += 1))
+done < <(find "$compiler_rt_dir" -maxdepth 1 -type f -name '*.so' -print0)
+if (( compiler_rt_shared_count == 0 )); then
+    echo "No compiler-rt shared libraries found in $compiler_rt_dir" >&2
+    exit 1
+fi
+echo "compiler_rt_shared_libraries=$compiler_rt_shared_count"
+
 PYTHONPATH="$toolchain/lib/python3.11/site-packages" \
     host_run "$toolchain/python3/bin/python3.11" -c \
     'import lldb; print("lldb-python-ok", lldb.SBDebugger.GetVersionString())'
@@ -155,7 +210,7 @@ find "$toolchain/lib" -maxdepth 1 -type f -print0 \
     | rg 'ELF ' \
     | rg -v 'ARM aarch64' >> "$unexpected_host_elf" || true
 find "$toolchain/lib/aarch64-unknown-linux-gnu" \
-    "$toolchain/lib/clang/18/lib/aarch64-unknown-linux-gnu" \
+    "$compiler_rt_dir" \
     "$toolchain/musl/lib" -maxdepth 1 -type f -print0 \
     | xargs -0 file \
     | rg 'ELF ' \

@@ -2,12 +2,14 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
 source_dir="$project_root/sources/cpython3"
 build_dir="$project_root/build/python-linux-aarch64"
 install_dir="$project_root/out/python-linux-aarch64"
 deps="$project_root/out/host-deps-linux-aarch64"
 build_python="$project_root/sources/python-prebuilt-reference/bin/python3.11"
-jobs=${JOBS:-$(nproc)}
+jobs=$(resolve_build_jobs)
 static_curses_patch="$project_root/patches/cpython-static-curses-deps.patch"
 
 if ! command -v patchelf >/dev/null 2>&1; then

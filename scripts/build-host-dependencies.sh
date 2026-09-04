@@ -2,7 +2,9 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-jobs=${JOBS:-$(nproc)}
+# shellcheck disable=SC1091
+source "$project_root/scripts/build-jobs.sh"
+jobs=$(resolve_build_jobs)
 toolchain_file="$project_root/cmake/linux-aarch64-toolchain.cmake"
 prefix="$project_root/out/host-deps-linux-aarch64"
 build_root="$project_root/build/host-deps-linux-aarch64"
