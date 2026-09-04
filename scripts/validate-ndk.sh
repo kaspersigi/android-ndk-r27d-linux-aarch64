@@ -93,6 +93,92 @@ check_needed_libraries() {
     )
 }
 
+declare -A packaged_host_sonames=()
+host_elf_count=0
+
+register_packaged_host_sonames() {
+    local root=$1
+    local scope=$2
+    local path kind soname
+    local -a find_args=("$root")
+
+    [[ -d "$root" ]] || {
+        echo "Missing NDK host directory: $root" >&2
+        exit 1
+    }
+    if [[ "$scope" == "shallow" ]]; then
+        find_args+=(-maxdepth 1)
+    fi
+
+    while IFS= read -r -d '' path; do
+        kind=$(file -b -- "$path")
+        [[ "$kind" == ELF* ]] || continue
+        soname=$(
+            readelf -d -- "$path" |
+                sed -n 's/.*Library soname: \[\([^]]*\)\].*/\1/p'
+        )
+        if [[ -n "$soname" ]]; then
+            packaged_host_sonames["$soname"]=$path
+        fi
+    done < <(find "${find_args[@]}" -type f -print0)
+}
+
+check_host_dependency_closure() {
+    local path=$1
+    local dependency
+    local nis_extension="$toolchain/python3/lib/python3.11/lib-dynload/nis.cpython-311-aarch64-linux-gnu.so"
+
+    while IFS= read -r dependency; do
+        case "$dependency" in
+            libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|ld-linux-aarch64.so.1)
+                ;;
+            libnsl.so.1)
+                [[ "$path" == "$nis_extension" ]] || {
+                    echo "Unexpected external shared-library dependency in $path: $dependency" >&2
+                    exit 1
+                }
+                ;;
+            libgcc_s.so.1)
+                [[ "$path" == "$compiler_rt_dir/"* ]] || {
+                    echo "Unexpected external shared-library dependency in $path: $dependency" >&2
+                    exit 1
+                }
+                ;;
+            *)
+                [[ ${packaged_host_sonames[$dependency]+present} ]] || {
+                    echo "NDK host ELF depends on an unpackaged shared library in $path: $dependency" >&2
+                    exit 1
+                }
+                ;;
+        esac
+    done < <(
+        readelf -d -- "$path" |
+            sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p'
+    )
+}
+
+scan_ndk_host_elfs() {
+    local root=$1
+    local scope=$2
+    local path kind
+    local -a find_args=("$root")
+
+    if [[ "$scope" == "shallow" ]]; then
+        find_args+=(-maxdepth 1)
+    fi
+
+    while IFS= read -r -d '' path; do
+        kind=$(file -b -- "$path")
+        [[ "$kind" == ELF* ]] || continue
+        readelf -h -- "$path" | grep -Eq 'Machine:.*AArch64' || {
+            echo "Non-AArch64 host ELF file: $path: $kind" >&2
+            exit 1
+        }
+        check_host_dependency_closure "$path"
+        ((host_elf_count += 1))
+    done < <(find "${find_args[@]}" -type f -print0)
+}
+
 host_run "$toolchain/bin/clang" --version
 host_run "$toolchain/bin/llvm-config" --targets-built
 host_run "$toolchain/bin/ld.lld" --version
@@ -194,32 +280,35 @@ file "$validation_root/cmake-arm64-v8a/libndk_arm64_cmake_smoke.so"
 find "$validation_root/ndk-build-libs" -type f -name '*.so' -print0 \
     | sort -z | xargs -0 file
 
-unexpected_host_elf="$validation_root/unexpected-host-elf.txt"
-find "$toolchain/bin" \
-    "$toolchain/python3" \
-    "$toolchain/lib/python3.11" \
-    "$host_prebuilt/bin" \
-    "$shader_tools" \
-    "$simpleperf_tools" \
-    -type f -print0 \
-    | xargs -0 file \
-    | rg 'ELF ' \
-    | rg -v 'ARM aarch64' > "$unexpected_host_elf" || true
-find "$toolchain/lib" -maxdepth 1 -type f -print0 \
-    | xargs -0 file \
-    | rg 'ELF ' \
-    | rg -v 'ARM aarch64' >> "$unexpected_host_elf" || true
-find "$toolchain/lib/aarch64-unknown-linux-gnu" \
-    "$compiler_rt_dir" \
-    "$toolchain/musl/lib" -maxdepth 1 -type f -print0 \
-    | xargs -0 file \
-    | rg 'ELF ' \
-    | rg -v 'ARM aarch64' >> "$unexpected_host_elf" || true
-if [[ -s "$unexpected_host_elf" ]]; then
-    echo "Non-AArch64 host ELF files found:" >&2
-    cat "$unexpected_host_elf" >&2
-    exit 1
-fi
+recursive_host_roots=(
+    "$toolchain/bin"
+    "$toolchain/python3"
+    "$toolchain/lib/python3.11"
+    "$host_prebuilt/bin"
+    "$shader_tools"
+    "$simpleperf_tools"
+)
+shallow_host_roots=(
+    "$toolchain/lib"
+    "$host_runtime_dir"
+    "$compiler_rt_dir"
+    "$toolchain/musl/lib"
+)
+
+for root in "${recursive_host_roots[@]}"; do
+    register_packaged_host_sonames "$root" recursive
+done
+for root in "${shallow_host_roots[@]}"; do
+    register_packaged_host_sonames "$root" shallow
+done
+for root in "${recursive_host_roots[@]}"; do
+    scan_ndk_host_elfs "$root" recursive
+done
+for root in "${shallow_host_roots[@]}"; do
+    scan_ndk_host_elfs "$root" shallow
+done
+echo "packaged_host_sonames=${#packaged_host_sonames[@]}"
+echo "ndk_host_elf_files=$host_elf_count"
 
 "$project_root/scripts/check-aarch64-host-archives.sh" "$package_root"
 "$project_root/scripts/compare-reference-layout.py" "$package_root" \
