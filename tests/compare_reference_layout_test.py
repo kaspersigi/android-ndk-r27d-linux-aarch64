@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import runpy
 import struct
@@ -97,6 +98,27 @@ class HostElfDifferenceTest(unittest.TestCase):
                 self.expected,
                 self.actual,
             )
+        )
+
+
+class HostScriptDifferenceTest(unittest.TestCase):
+    def test_only_pinned_patched_content_is_accepted(self) -> None:
+        relative = "ndk-gdb"
+        expected = Entry("file", Path("reference"), 0o755, digest="reference")
+        pinned = MODULE["PINNED_HOST_SCRIPT_DIGESTS"][relative]
+        actual = Entry("file", Path("candidate"), 0o755, digest=pinned)
+        self.assertTrue(content_difference_is_expected(relative, expected, actual))
+
+        empty_digest = hashlib.sha256(b"").hexdigest()
+        empty = Entry("file", Path("candidate"), 0o755, digest=empty_digest)
+        self.assertFalse(content_difference_is_expected(relative, expected, empty))
+
+        official_digest = hashlib.sha256(b"official x86_64 script\n").hexdigest()
+        unpatched = Entry(
+            "file", Path("candidate"), 0o755, digest=official_digest
+        )
+        self.assertFalse(
+            content_difference_is_expected(relative, expected, unpatched)
         )
 
 

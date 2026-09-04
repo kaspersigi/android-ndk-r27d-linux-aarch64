@@ -43,6 +43,10 @@ HOST_SCRIPT_DIFFERENCES = {
     "ndk-which",
 }
 
+HOST_SCRIPT_MANIFEST = (
+    Path(__file__).resolve().parents[1] / "manifests/ndk-host-scripts.tsv"
+)
+
 HOST_GENERATED_CONTENT_PREFIXES = (
     "toolchains/llvm/prebuilt/linux-aarch64/lib/aarch64-unknown-linux-gnu",
     "toolchains/llvm/prebuilt/linux-aarch64/lib/clang/18/lib/aarch64-unknown-linux-gnu",
@@ -172,6 +176,44 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def read_host_script_digests(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line_number, line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        fields = stripped.split()
+        if len(fields) != 2 or len(fields[0]) != 64:
+            raise ValueError(
+                f"invalid host-script manifest entry at {path}:{line_number}"
+            )
+        digest, relative = fields
+        try:
+            bytes.fromhex(digest)
+        except ValueError as error:
+            raise ValueError(
+                f"invalid SHA-256 at {path}:{line_number}"
+            ) from error
+        if relative in result:
+            raise ValueError(f"duplicate host-script manifest path: {relative}")
+        result[relative] = digest.lower()
+
+    manifest_paths = set(result)
+    if manifest_paths != HOST_SCRIPT_DIFFERENCES:
+        missing = sorted(HOST_SCRIPT_DIFFERENCES - manifest_paths)
+        extra = sorted(manifest_paths - HOST_SCRIPT_DIFFERENCES)
+        raise ValueError(
+            "host-script manifest path set differs from the patched scripts: "
+            f"missing={missing} extra={extra}"
+        )
+    return result
+
+
+PINNED_HOST_SCRIPT_DIGESTS = read_host_script_digests(HOST_SCRIPT_MANIFEST)
+
+
 def is_rebuilt_host_elf_path(relative: str) -> bool:
     if any(
         relative.startswith(prefix + "/") for prefix in HOST_ELF_CONTENT_PREFIXES
@@ -184,7 +226,9 @@ def is_rebuilt_host_elf_path(relative: str) -> bool:
 def content_difference_is_expected(
     relative: str, expected: Entry, actual: Entry
 ) -> bool:
-    if relative in HOST_SCRIPT_DIFFERENCES | HOST_GENERATED_CONTENT_FILES:
+    if relative in HOST_SCRIPT_DIFFERENCES:
+        return actual.digest == PINNED_HOST_SCRIPT_DIGESTS[relative]
+    if relative in HOST_GENERATED_CONTENT_FILES:
         return True
     if any(
         relative == prefix or relative.startswith(prefix + "/")
@@ -291,8 +335,21 @@ def main() -> int:
         path
         for path in common
         if expected[path].kind == actual[path].kind == "file"
-        and expected[path].digest != actual[path].digest
-        and not content_difference_is_expected(path, expected[path], actual[path])
+        and (
+            (
+                path in HOST_SCRIPT_DIFFERENCES
+                and not content_difference_is_expected(
+                    path, expected[path], actual[path]
+                )
+            )
+            or (
+                path not in HOST_SCRIPT_DIFFERENCES
+                and expected[path].digest != actual[path].digest
+                and not content_difference_is_expected(
+                    path, expected[path], actual[path]
+                )
+            )
+        )
     ]
     reference_entry_count_mismatch = len(expected) != EXPECTED_REFERENCE_ENTRIES
 

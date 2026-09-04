@@ -45,12 +45,16 @@ archive_member_count=0
 elf_member_count=0
 
 check_member_file() {
-    local archive=$1 member=$2 occurrence=$3 path=$4 description
+    local archive=$1 member=$2 occurrence=$3 path=$4 description='' elf_header=''
     if ! description=$(aarch64-linux-gnu-objdump -f -- "$path" 2>&1) ||
        ! grep -Fq 'file format elf64-littleaarch64' <<< "$description" ||
-       ! grep -Eq '^architecture: aarch64,' <<< "$description"; then
+       ! grep -Eq '^architecture: aarch64,' <<< "$description" ||
+       ! elf_header=$(aarch64-linux-gnu-readelf -h -- "$path" 2>&1) ||
+       grep -Fq 'Error:' <<< "$elf_header" ||
+       ! grep -Eq '^[[:space:]]*Type:[[:space:]]+REL[[:space:]]' <<< "$elf_header"; then
         printf '%s(%s occurrence %s): %s\n' \
-            "$archive" "$member" "$occurrence" "$description" >> "$bad_members"
+            "$archive" "$member" "$occurrence" \
+            "${description//$'\n'/; }; ${elf_header//$'\n'/; }" >> "$bad_members"
         return
     fi
     elf_member_count=$((elf_member_count + 1))
@@ -113,7 +117,7 @@ if ! diff -u <(grep -Ev '^[[:space:]]*(#|$)' "$manifest") \
 fi
 
 if [[ -s "$bad_members" ]]; then
-    echo "Invalid or non-AArch64 members found in host archives:" >&2
+    echo "Invalid, non-relocatable, or non-AArch64 members found in host archives:" >&2
     cat "$bad_members" >&2
     exit 1
 fi

@@ -77,7 +77,8 @@ ABI, unwinder, and atomic support without relying on unpackaged shared
 libraries. Validation structurally parses every host executable/shared ELF;
 each non-glibc dependency must be provided by a SONAME inside the NDK. It also
 checks every static-library member against the pinned archive inventory and
-rejects empty, truncated, non-ELF, or non-AArch64 members. Compiler-rt shared
+rejects empty, truncated, non-ELF, non-AArch64, or non-relocatable (`ET_EXEC`/
+`ET_DYN`) members. Compiler-rt shared
 runtimes statically incorporate libstdc++; their remaining `libgcc_s.so.1`
 dependency matches the official Linux x86_64 NDK. The exact deprecated Python
 `nis` extension retains
@@ -213,7 +214,9 @@ The reference must contain the fixed 9,276-entry r27d inventory, and the
 candidate count must match it exactly. After host-name normalization, ordinary
 files are SHA-256 checked. Only the documented patched/generated files and
 actual x86_64-to-AArch64 ELF replacements may differ; rebuilt host binaries are
-not expected to be byte-identical to Google's x86_64 binaries.
+not expected to be byte-identical to Google's x86_64 binaries. The nine
+host-tag scripts modified by the pinned patch are not broad exceptions: each
+must match its exact digest in `manifests/ndk-host-scripts.tsv`.
 
 ## GitHub Actions release
 
