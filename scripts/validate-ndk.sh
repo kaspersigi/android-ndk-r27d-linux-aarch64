@@ -24,6 +24,8 @@ if [[ ! -x "$toolchain/bin/clang" ]]; then
 fi
 
 python3 -B "$project_root/tests/compare_reference_layout_test.py"
+"$project_root/tests/check-aarch64-elf-test.sh"
+"$project_root/tests/check-aarch64-host-archives-test.sh"
 
 "$project_root/scripts/compare-reference-layout.py" "$package_root" \
     --reference "${REFERENCE_NDK:-/mnt/develop/android-ndk-r27d}"
@@ -67,10 +69,29 @@ case $(uname -m) in
         ;;
 esac
 
+read_elf_dynamic_section() {
+    local path=$1 output
+
+    if ! output=$(readelf -d -- "$path" 2>&1); then
+        echo "Failed to read ELF dynamic section: $path" >&2
+        printf '%s\n' "$output" >&2
+        return 1
+    fi
+    if grep -Fq 'Error:' <<< "$output"; then
+        echo "Invalid ELF dynamic section: $path" >&2
+        printf '%s\n' "$output" >&2
+        return 1
+    fi
+    printf '%s\n' "$output"
+}
+
 check_needed_libraries() {
     local path=$1
     local allow_libgcc=$2
-    local dependency
+    local dependency dynamic_section
+
+    "$project_root/scripts/check-aarch64-elf.sh" "$path"
+    dynamic_section=$(read_elf_dynamic_section "$path") || exit 1
 
     while IFS= read -r dependency; do
         case "$dependency" in
@@ -87,19 +108,31 @@ check_needed_libraries() {
                 exit 1
                 ;;
         esac
-    done < <(
-        readelf -d -- "$path" |
-            sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p'
-    )
+    done < <(sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' \
+        <<< "$dynamic_section")
 }
 
 declare -A packaged_host_sonames=()
 host_elf_count=0
 
+validate_ndk_host_elf() {
+    local path=$1
+    case "$path" in
+        "$compiler_rt_dir/clang_rt.crtbegin.o"|\
+        "$compiler_rt_dir/clang_rt.crtend.o")
+            "$project_root/scripts/check-aarch64-elf.sh" \
+                --allow-relocatable "$path"
+            ;;
+        *)
+            "$project_root/scripts/check-aarch64-elf.sh" "$path"
+            ;;
+    esac
+}
+
 register_packaged_host_sonames() {
     local root=$1
     local scope=$2
-    local path kind soname
+    local path kind soname dynamic_section
     local -a find_args=("$root")
 
     [[ -d "$root" ]] || {
@@ -113,10 +146,10 @@ register_packaged_host_sonames() {
     while IFS= read -r -d '' path; do
         kind=$(file -b -- "$path")
         [[ "$kind" == ELF* ]] || continue
-        soname=$(
-            readelf -d -- "$path" |
-                sed -n 's/.*Library soname: \[\([^]]*\)\].*/\1/p'
-        )
+        validate_ndk_host_elf "$path"
+        dynamic_section=$(read_elf_dynamic_section "$path") || exit 1
+        soname=$(sed -n 's/.*Library soname: \[\([^]]*\)\].*/\1/p' \
+            <<< "$dynamic_section")
         if [[ -n "$soname" ]]; then
             packaged_host_sonames["$soname"]=$path
         fi
@@ -125,8 +158,10 @@ register_packaged_host_sonames() {
 
 check_host_dependency_closure() {
     local path=$1
-    local dependency
+    local dependency dynamic_section
     local nis_extension="$toolchain/python3/lib/python3.11/lib-dynload/nis.cpython-311-aarch64-linux-gnu.so"
+
+    dynamic_section=$(read_elf_dynamic_section "$path") || exit 1
 
     while IFS= read -r dependency; do
         case "$dependency" in
@@ -151,10 +186,8 @@ check_host_dependency_closure() {
                 }
                 ;;
         esac
-    done < <(
-        readelf -d -- "$path" |
-            sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p'
-    )
+    done < <(sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' \
+        <<< "$dynamic_section")
 }
 
 scan_ndk_host_elfs() {
@@ -170,10 +203,6 @@ scan_ndk_host_elfs() {
     while IFS= read -r -d '' path; do
         kind=$(file -b -- "$path")
         [[ "$kind" == ELF* ]] || continue
-        readelf -h -- "$path" | grep -Eq 'Machine:.*AArch64' || {
-            echo "Non-AArch64 host ELF file: $path: $kind" >&2
-            exit 1
-        }
         check_host_dependency_closure "$path"
         ((host_elf_count += 1))
     done < <(find "${find_args[@]}" -type f -print0)
@@ -191,11 +220,13 @@ host_run "$toolchain/python3/bin/python3.11" -c \
 
 for name in libc++.so libc++abi.so libunwind.so; do
     runtime="$host_runtime_dir/$name"
+    dynamic_section=
     [[ -f "$runtime" ]] || {
         echo "Required host runtime is missing: $runtime" >&2
         exit 1
     }
-    readelf -d -- "$runtime" | grep -Fq "Library soname: [$name]" || {
+    dynamic_section=$(read_elf_dynamic_section "$runtime") || exit 1
+    grep -Fq "Library soname: [$name]" <<< "$dynamic_section" || {
         echo "Unexpected host-runtime SONAME: $runtime" >&2
         exit 1
     }

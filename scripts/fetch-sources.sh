@@ -9,8 +9,13 @@ checkout_commit() {
     local commit=$3
 
     if [[ -d "$destination/.git" ]]; then
-        local actual
+        local actual actual_url
         actual=$(git -C "$destination" rev-parse --verify HEAD 2>/dev/null || true)
+        actual_url=$(git -C "$destination" remote get-url origin 2>/dev/null || true)
+        if [[ "$actual_url" != "$url" ]]; then
+            echo "Unexpected origin in $destination: $actual_url (expected $url)" >&2
+            exit 1
+        fi
         if [[ -z "$actual" ]]; then
             git -C "$destination" fetch --depth 1 origin "$commit"
             git -C "$destination" checkout --detach FETCH_HEAD
@@ -177,3 +182,8 @@ checkout_commit \
     https://android.googlesource.com/platform/external/rust/crates/rustc-demangle-capi \
     "$project_root/sources/rustc-demangle-capi" \
     d559e1fd988256e553f4fd6cc90abb59c658f702
+
+python3 -B "$project_root/scripts/source-state.py" verify \
+    "$project_root/sources" "$project_root/build/source-state.json" \
+    --policy-path "$project_root/scripts" \
+    --policy-path "$project_root/patches"

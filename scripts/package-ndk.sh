@@ -28,9 +28,14 @@ trap cleanup EXIT
 
 (
     cd "$dist_dir"
-    zip -q -r -y "$temporary_root/$archive_name" "$package_name"
+    export LC_ALL=C
+    export TZ=UTC
+    find "$package_name" -exec touch -h -d '2008-01-01 00:00:00 UTC' {} +
+    find "$package_name" -print | sort | \
+        zip -q -X -y "$temporary_root/$archive_name" -@
 )
 mv "$temporary_root/$archive_name" "$archive"
+python3 -B "$project_root/scripts/check-zip-metadata.py" "$archive"
 (cd "$dist_dir" && sha256sum "$archive_name") > "$checksum"
 rmdir "$temporary_root"
 temporary_root=

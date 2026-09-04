@@ -38,6 +38,13 @@ assembles the NDK, runs the validation suite, and creates the release archive.
 It exits without producing a successful result if any required validation
 fails.
 
+Incremental builds reuse a source tree only when its complete tracked diff,
+non-ignored untracked-file content, nested repository revisions, upstream URLs,
+and source-transformation policy match the state recorded by the preceding
+successful compilation stage. If that state cannot be proven, the build fails
+closed and requires `CLEAN=1`; it never resets or overwrites a locally edited
+source tree.
+
 ## Outputs
 
 Successful builds create:
@@ -52,6 +59,10 @@ The archive name intentionally matches Google's Linux naming pattern. It
 extracts to `android-ndk-r27d/`; the AArch64 identity is represented by the
 internal `linux-aarch64` host tag.
 
+Archive paths are sorted, extra ZIP metadata is removed, and every entry uses
+the fixed UTC timestamp `2008-01-01 00:00:00`, making packaging reproducible
+for an unchanged assembled tree.
+
 After extracting the archive on a compatible Linux AArch64 system:
 
 ```bash
@@ -63,10 +74,13 @@ The current host binaries require glibc 2.43 or newer.
 
 Host `libc++.so`, `libc++abi.so`, and `libunwind.so` incorporate their LLVM
 ABI, unwinder, and atomic support without relying on unpackaged shared
-libraries. Validation checks every host ELF: each non-glibc dependency must be
-provided by a SONAME inside the NDK. Compiler-rt shared runtimes statically
-incorporate libstdc++; their remaining `libgcc_s.so.1` dependency matches the
-official Linux x86_64 NDK. The exact deprecated Python `nis` extension retains
+libraries. Validation structurally parses every host executable/shared ELF;
+each non-glibc dependency must be provided by a SONAME inside the NDK. It also
+checks every static-library member against the pinned archive inventory and
+rejects empty, truncated, non-ELF, or non-AArch64 members. Compiler-rt shared
+runtimes statically incorporate libstdc++; their remaining `libgcc_s.so.1`
+dependency matches the official Linux x86_64 NDK. The exact deprecated Python
+`nis` extension retains
 the official-compatible libc6 `libnsl.so.1` dependency.
 
 ## Repository dependencies

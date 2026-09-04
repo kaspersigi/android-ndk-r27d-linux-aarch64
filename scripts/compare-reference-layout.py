@@ -11,6 +11,12 @@ from pathlib import Path
 import stat
 import sys
 
+sys.dont_write_bytecode = True
+script_dir = str(Path(__file__).resolve().parent)
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+from elf_validation import is_valid_elf_machine
+
 
 HOST_PREFIXES = (
     ("toolchains/llvm/prebuilt/linux-x86_64", "toolchains/llvm/prebuilt/linux-aarch64"),
@@ -166,20 +172,6 @@ def file_digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def elf_machine(path: Path) -> int | None:
-    with path.open("rb") as stream:
-        header = stream.read(20)
-    if len(header) < 20 or header[:4] != b"\x7fELF":
-        return None
-    if header[5] == 1:
-        byteorder = "little"
-    elif header[5] == 2:
-        byteorder = "big"
-    else:
-        return None
-    return int.from_bytes(header[18:20], byteorder)
-
-
 def is_rebuilt_host_elf_path(relative: str) -> bool:
     if any(
         relative.startswith(prefix + "/") for prefix in HOST_ELF_CONTENT_PREFIXES
@@ -204,8 +196,8 @@ def content_difference_is_expected(
     # runtime directories must remain byte-for-byte identical.
     return (
         is_rebuilt_host_elf_path(relative)
-        and elf_machine(expected.source) == 62
-        and elf_machine(actual.source) == 183
+        and is_valid_elf_machine(expected.source, 62)
+        and is_valid_elf_machine(actual.source, 183)
     )
 
 

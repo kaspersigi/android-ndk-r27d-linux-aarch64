@@ -162,6 +162,8 @@ fi
 rm -f -- "$qemu_exec_probe"
 trap - EXIT
 
+python3 -B "$project_root/tests/source_state_test.py"
+
 if [[ "$clean" == "1" ]]; then
     echo "Removing generated sources, build trees, outputs, and packages..."
     rm -rf -- \
@@ -278,6 +280,11 @@ for build_step in "${build_steps[@]}"; do
     echo "==> $build_step"
     "$project_root/scripts/$build_step"
 done
+
+python3 -B "$project_root/scripts/source-state.py" record \
+    "$project_root/sources" "$project_root/build/source-state.json" \
+    --policy-path "$project_root/scripts" \
+    --policy-path "$project_root/patches"
 
 # Assembly and packaging are intentionally replaced on every invocation while
 # sources and intermediate build trees remain incremental unless CLEAN=1.
