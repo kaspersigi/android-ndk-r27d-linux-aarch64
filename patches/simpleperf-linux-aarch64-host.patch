@@ -1,0 +1,38 @@
+diff --git a/simpleperf/simpleperf_utils.py b/simpleperf/simpleperf_utils.py
+--- a/simpleperf/simpleperf_utils.py
++++ b/simpleperf/simpleperf_utils.py
+@@ -28,0 +29 @@
++import platform as host_platform
+@@ -83,0 +85,14 @@
++def get_host_arch() -> str:
++    # sys.maxsize distinguishes bitness, not the host CPU architecture.
++    # Keep the official Windows/macOS layouts unchanged.
++    if get_platform() == 'linux' and host_platform.machine().lower() in ('aarch64', 'arm64'):
++        return 'aarch64'
++    return 'x86_64' if sys.maxsize > 2 ** 32 else 'x86'
++
++
++def get_ndk_host_tag(platform: str) -> str:
++    if platform == 'linux' and get_host_arch() == 'aarch64':
++        return 'linux-aarch64'
++    return platform + '-x86_64'
++
++
+@@ -98 +113 @@
+-    dirname = os.path.join(dirname, 'x86_64' if sys.maxsize > 2 ** 32 else 'x86')
++    dirname = os.path.join(dirname, get_host_arch())
+@@ -133 +148 @@
+-                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-objdump' % platform,
++                lambda platform: 'toolchains/llvm/prebuilt/%s/bin/llvm-objdump' % get_ndk_host_tag(platform),
+@@ -138 +153 @@
+-                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-readelf' % platform,
++                lambda platform: 'toolchains/llvm/prebuilt/%s/bin/llvm-readelf' % get_ndk_host_tag(platform),
+@@ -143 +158 @@
+-                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-symbolizer' % platform,
++                lambda platform: 'toolchains/llvm/prebuilt/%s/bin/llvm-symbolizer' % get_ndk_host_tag(platform),
+@@ -148 +163 @@
+-                lambda platform: 'toolchains/llvm/prebuilt/%s-x86_64/bin/llvm-strip' % platform,
++                lambda platform: 'toolchains/llvm/prebuilt/%s/bin/llvm-strip' % get_ndk_host_tag(platform),
+@@ -209 +224 @@
+-        path = 'toolchains/llvm/prebuilt/%s-x86_64/bin/%s' % (platform, name)
++        path = 'toolchains/llvm/prebuilt/%s/bin/%s' % (get_ndk_host_tag(platform), name)

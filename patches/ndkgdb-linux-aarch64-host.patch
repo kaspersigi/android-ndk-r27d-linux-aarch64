@@ -1,0 +1,54 @@
+--- a/ndkgdb.py
++++ b/ndkgdb.py
+@@ -24,5 +24,6 @@
+ import logging
+ import os
++import platform as host_platform
+ import posixpath
+ import signal
+ import subprocess
+@@ -36,6 +37,7 @@
+ import gdbrunner
+
+-NDK_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
++_SCRIPT_PATH = getattr(__loader__, "archive", __file__)
++NDK_PATH = os.path.abspath(os.path.join(os.path.dirname(_SCRIPT_PATH), "../../.."))
+
+
+ def log(msg: str) -> None:
+@@ -345,6 +347,8 @@
+     ]
+
++    if get_llvm_host_name() == "linux-aarch64":
++        make_args.append("HOST_ARCH=aarch64")
+     if abi is not None:
+         make_args.append("APP_ABI={}".format(abi))
+
+     with cd(args.project):
+@@ -362,5 +366,5 @@
+         if api_str is None:
+             raise KeyError
+-        api_level = int()
++        api_level = int(api_str)
+     except (ValueError, KeyError):
+         error(
+@@ -473,6 +474,8 @@
+         return "windows-x86_64"
+     if platform.startswith("darwin"):
+         return "darwin-x86_64"
++    if host_platform.machine().lower() in ("aarch64", "arm64"):
++        return "linux-aarch64"
+     return "linux-x86_64"
+
+
+@@ -900,8 +906,8 @@
+             llvm_toolchain_dir,
+-            "lib64",
++            "lib",
+             "clang",
+-            get_llvm_package_version(llvm_toolchain_dir),
++            get_llvm_package_version(llvm_toolchain_dir).split(".")[0],
+             "lib",
+             "linux",
+             abi_to_llvm_arch(abi),
+             "lldb-server",

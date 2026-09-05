@@ -1,0 +1,27 @@
+--- a/build/cmake/hooks/post/Android-Determine.cmake
++++ b/build/cmake/hooks/post/Android-Determine.cmake
+@@ -15,6 +15,24 @@
+ # This is a hook file that will be included by cmake at the end of
+ # Modules/Platform/Android-Determine.cmake.
+
++# CMake 3.22/4.x only recognizes x86 Linux NDK hosts. Repair its native
++# selection here, for both the non-legacy toolchain and CMake's own Android
++# entry point. Do not alter the Android target architecture or other hosts.
++if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux" AND
++   CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
++  set(CMAKE_ANDROID_NDK_TOOLCHAIN_HOST_TAG "linux-aarch64")
++  set(CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED
++      "${CMAKE_ANDROID_NDK}/toolchains/llvm/prebuilt/linux-aarch64")
++  if(NOT IS_DIRECTORY "${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}/sysroot")
++    message(FATAL_ERROR "Android: missing Linux AArch64 NDK unified sysroot: ${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}/sysroot")
++  endif()
++  # Android-Determine already serialized the old values. Override them in
++  # CMakeSystem.cmake too, before compatibility exports and try_compile.
++  string(APPEND CMAKE_SYSTEM_CUSTOM_CODE
++    "set(CMAKE_ANDROID_NDK_TOOLCHAIN_HOST_TAG \"${CMAKE_ANDROID_NDK_TOOLCHAIN_HOST_TAG}\")\n"
++    "set(CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED \"${CMAKE_ANDROID_NDK_TOOLCHAIN_UNIFIED}\")\n")
++endif()
++
+ # android.toolchain.cmake may set this to export old variables.
+ if(_ANDROID_EXPORT_COMPATIBILITY_VARIABLES)
+   file(READ "${CMAKE_ANDROID_NDK}/build/cmake/exports.cmake" _EXPORTS)

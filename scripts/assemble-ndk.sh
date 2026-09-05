@@ -15,7 +15,6 @@ simpleperf_host="$project_root/out/simpleperf-linux-aarch64"
 musl_install="$project_root/out/musl-linux-aarch64"
 dist_dir="$project_root/dist"
 destination=${DESTINATION_NDK:-$dist_dir/android-ndk-r27d}
-host_patch="$project_root/patches/ndk-linux-aarch64-host-tag.patch"
 
 for required in \
     "$reference_ndk/source.properties" \
@@ -33,7 +32,12 @@ for required in \
     "$simpleperf_host/libsimpleperf_report.so" \
     "$simpleperf_host/libsimpleperf_readelf.a" \
     "$musl_install/lib/libc_musl.so" \
-    "$host_patch"; do
+    "$project_root/scripts/apply-host-patches.py" \
+    "$project_root/patches/ndk-linux-aarch64-host-tag.patch" \
+    "$project_root/patches/simpleperf-linux-aarch64-host.patch" \
+    "$project_root/patches/cmake-native-linux-aarch64-host.patch" \
+    "$project_root/patches/ndkgdb-linux-aarch64-host.patch" \
+    "$project_root/patches/ndk-which-linux-aarch64-host.patch"; do
     if [[ ! -e "$required" ]]; then
         echo "Missing assembly input: $required" >&2
         exit 1
@@ -220,17 +224,7 @@ copy_regular "$simpleperf_prebuilt/bin/android/arm64/simpleperf" \
 copy_regular "$simpleperf_host/libsimpleperf_report.so" \
     "$simpleperf_dir/libsimpleperf_report.so"
 
-for patch_target in \
-    build/tools/ndk_bin_common.sh \
-    build/ndk-build \
-    build/cmake/android.toolchain.cmake \
-    build/cmake/android-legacy.toolchain.cmake \
-    build/tools/make_standalone_toolchain.py \
-    ndk-gdb ndk-lldb ndk-stack ndk-which; do
-    chmod u+w "$package_root/$patch_target"
-done
-patch --batch --forward --no-backup-if-mismatch -p1 -d "$package_root" \
-    < "$host_patch"
+python3 -B "$project_root/scripts/apply-host-patches.py" "$package_root"
 
 "$project_root/scripts/compare-reference-layout.py" "$package_root" \
     --reference "$reference_ndk"

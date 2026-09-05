@@ -17,7 +17,7 @@ usage() {
 Build, assemble, validate, and package Android NDK r27d for Linux AArch64.
 
 Usage:
-  ./scripts/resolute-local-build.sh
+  ./scripts/resolute-local-build.sh [--preflight-only]
 
 Environment:
   ALLOW_UNSUPPORTED_HOST=0  Require Ubuntu 26.04 (Resolute); set to 1 to bypass.
@@ -46,7 +46,10 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     exit 0
 fi
 
-if (( $# != 0 )); then
+preflight_only=0
+if [[ $# == 1 && "$1" == "--preflight-only" ]]; then
+    preflight_only=1
+elif (( $# != 0 )); then
     usage >&2
     exit 2
 fi
@@ -65,6 +68,10 @@ clean=${CLEAN:-0}
 jobs=$(resolve_build_jobs)
 require_boolean ALLOW_UNSUPPORTED_HOST "$allow_unsupported_host"
 require_boolean CLEAN "$clean"
+if (( preflight_only )) && [[ "$clean" == "1" ]]; then
+    echo "error: --preflight-only cannot be combined with CLEAN=1" >&2
+    exit 2
+fi
 
 if [[ ! -r /etc/os-release ]]; then
     echo "error: cannot identify the host because /etc/os-release is unavailable" >&2
@@ -164,15 +171,6 @@ trap - EXIT
 
 python3 -B "$project_root/tests/source_state_test.py"
 
-if [[ "$clean" == "1" ]]; then
-    echo "Removing generated sources, build trees, outputs, and packages..."
-    rm -rf -- \
-        "$project_root/sources" \
-        "$project_root/build" \
-        "$project_root/out" \
-        "$project_root/dist"
-fi
-
 reference_is_valid() {
     local candidate=$1
     local actual_entry_count actual_revision
@@ -259,6 +257,26 @@ export REFERENCE_NDK="$reference_ndk"
 echo "Build host: ${PRETTY_NAME:-unknown} ($(uname -m))"
 echo "Parallel jobs: $JOBS"
 echo "Reference NDK: $REFERENCE_NDK"
+
+# Exercise the actual patched scripts and compressed debugger before fetching
+# or compiling LLVM. This is also the entry used by GitHub Actions.
+python3 -B "$project_root/tests/compare_reference_layout_test.py"
+"$project_root/tests/check-aarch64-elf-test.sh"
+"$project_root/tests/check-aarch64-host-archives-test.sh"
+python3 -B "$project_root/tests/host_patches_test.py" --reference "$REFERENCE_NDK"
+if (( preflight_only )); then
+    echo "Preflight passed (metadata/configuration only; not a built artifact validation)."
+    exit 0
+fi
+
+if [[ "$clean" == "1" ]]; then
+    echo "Removing generated sources, build trees, outputs, and packages..."
+    rm -rf -- \
+        "$project_root/sources" \
+        "$project_root/build" \
+        "$project_root/out" \
+        "$project_root/dist"
+fi
 
 build_steps=(
     fetch-sources.sh

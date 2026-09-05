@@ -33,7 +33,18 @@ Run a clean build:
 CLEAN=1 ./scripts/resolute-local-build.sh
 ```
 
-The unified build script fetches pinned sources, builds every host component,
+The unified build script first applies the production patches to an isolated
+official-reference fixture and tests host discovery, shell launchers,
+`ndk-build --dry-run`, and all three CMake Android entry points. This gate runs
+before source checkout, LLVM compilation, and even `CLEAN=1` cleanup. Run only
+this inexpensive gate with:
+
+```bash
+./scripts/resolute-local-build.sh --preflight-only
+```
+
+Preflight uses reference x86 binaries for metadata/launcher checks; it is not
+AArch64 runtime validation. The same build entry then fetches pinned sources, builds every host component,
 assembles the NDK, runs the validation suite, and creates the release archive.
 It exits without producing a successful result if any required validation
 fails.
@@ -205,22 +216,41 @@ or through QEMU on the supported x86_64 build host. It verifies:
   bindings;
 - GNU Make, Yasm, shader compilation, SPIR-V validation, and Simpleperf report
   processing, including legacy and Rust v0 symbol demangling;
+- Simpleperf Python host/LLVM tool discovery, default report-library loading,
+  and actual `stackcollapse.py`, `gecko_profile_generator.py`, and
+  `report_sample.py` conversion using the packaged AArch64 Python;
 - direct C and C++ linking for ARM, AArch64, x86, x86_64, and RISC-V Android
   targets;
-- Android CMake toolchain integration for `arm64-v8a`;
+- Android CMake legacy, non-legacy (`ANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF`),
+  and native (`CMAKE_SYSTEM_NAME=Android`) entry points: C/C++ configure,
+  reconfigure, and linking for `arm64-v8a`, without a host-tag override;
+- `ndk-gdb`/`ndk-lldb` launchers plus host/version/LLDB lookup inside
+  `ndkgdb.pyz`, correct archive-relative NDK root, API parsing, real Make-variable
+  discovery, and main-flow lldb-server selection for all four debugger ABIs
+  (device replies are mocked; the test stops before any device write);
+  `ndk-stack --help` and `ndk-which readelf`;
 - `ndk-build` output for `armeabi-v7a`, `arm64-v8a`, `x86`, and `x86_64`.
 
 The reference must contain the fixed 9,276-entry r27d inventory, and the
 candidate count must match it exactly. After host-name normalization, ordinary
 files are SHA-256 checked. Only the documented patched/generated files and
 actual x86_64-to-AArch64 ELF replacements may differ; rebuilt host binaries are
-not expected to be byte-identical to Google's x86_64 binaries. The nine
-host-tag scripts modified by the pinned patch are not broad exceptions: each
+not expected to be byte-identical to Google's x86_64 binaries. The thirteen
+host script/archive files modified by the pinned patches are not broad exceptions: each
 must match its exact digest in `manifests/ndk-host-scripts.tsv`. All 16
 deterministic compiler-rt `*.syms` files likewise match the exact digests in
 `manifests/ndk-host-generated-text.tsv`. CPython configuration is intentionally
 validated by stable target ABI, pkg-config, and sysconfig fields instead of
 whole-file hashes because valid configure probe results vary by build host.
+
+The CMake native-path fix lives in the NDK's existing
+`build/cmake/hooks/post/Android-Determine.cmake`; it also updates persisted
+`CMakeSystem.cmake` values. Consumers do not need patched CMake modules.
+The SDK repository runs the same entrypoint test with its bundled CMake
+3.22.1 and 4.1.2 and matching Ninja binaries. On x86_64, runtime gates require
+working QEMU **and binfmt child execution**; shell/CMake uname is simulated,
+but `HOST_ARCH`/`ANDROID_HOST_TAG` are not forced. These gates are not evidence
+of native AArch64 device attachment, debugger sessions, or every Gradle project.
 
 ## GitHub Actions release
 

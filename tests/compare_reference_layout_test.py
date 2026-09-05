@@ -102,6 +102,14 @@ class HostElfDifferenceTest(unittest.TestCase):
 
 
 class HostScriptDifferenceTest(unittest.TestCase):
+    def test_all_patched_entrypoints_are_pinned_not_broad_exceptions(self) -> None:
+        expected = Entry("file", Path("reference"), 0o644, digest="reference")
+        for relative, pinned in MODULE["PINNED_HOST_SCRIPT_DIGESTS"].items():
+            for digest, accepted in ((pinned, True), ("unpatched", False), ("other", False)):
+                with self.subTest(path=relative, digest=digest):
+                    actual = Entry("file", Path("candidate"), 0o644, digest=digest)
+                    self.assertEqual(content_difference_is_expected(relative, expected, actual), accepted)
+
     def test_only_pinned_patched_content_is_accepted(self) -> None:
         relative = "ndk-gdb"
         expected = Entry("file", Path("reference"), 0o755, digest="reference")

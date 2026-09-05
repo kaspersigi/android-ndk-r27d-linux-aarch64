@@ -20,6 +20,22 @@ Google's exact Android AArch64 r27d binary. This build does not reproduce
 Google's PGO/BOLT/MLGO optimization pipeline and is not byte-for-byte identical
 to an official NDK.
 
+Simpleperf Python helpers select `bin/linux/aarch64` and the LLVM
+`linux-aarch64` host directory. Default report-library discovery and the
+stackcollapse, Gecko, and sample-report entry points are validated with the
+packaged AArch64 Python, without an explicit library-path override.
+
+The compressed ndk-gdb/ndk-lldb implementation and ndk-which's Make invocation
+also select the Linux AArch64 toolchain. The compressed debugger uses the
+correct archive-relative NDK root and Clang 18 resource directory, propagates
+host architecture to Make, and parses the device API property instead of zero.
+The debugger regression mocks device replies and stops before server upload.
+The NDK post-Android-Determine hook repairs native/non-legacy CMake host
+discovery and persisted try_compile state.
+Validation exercises all three CMake entry points, repeated configuration,
+C/C++ linking, shell launchers, and ndk-build without forced host-tag variables.
+QEMU-based validation on x86_64 is not a native-device debugging test.
+
 The normalized package inventory is one-for-one with the official Linux
 x86_64 tree: 9,276 entries, with no missing paths, extra paths, type changes,
 permission changes, or symlink-target changes after host-name normalization.

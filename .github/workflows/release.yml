@@ -33,7 +33,8 @@ jobs:
           key: android-ndk-r27d-linux-${{ env.REFERENCE_NDK_SHA256 }}
       - name: Install Ubuntu 26.04 dependencies
         run: ./scripts/resolute-install-deps.sh
-      - name: Build, validate, and package
+      # The local entry gates patched reference entrypoints before LLVM or CLEAN.
+      - name: Preflight entrypoints, build, validate, and package
         env:
           CLEAN: "1"
           JOBS: "4"

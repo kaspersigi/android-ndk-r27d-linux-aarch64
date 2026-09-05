@@ -41,8 +41,6 @@ done < <(find "$toolchain/python3/lib/python3.11/lib-dynload" \
 case $(uname -m) in
     aarch64|arm64)
         host_run() { "$@"; }
-        ndk_build_run() { "$package_root/ndk-build" "$@"; }
-        cmake_launcher_options=()
         ;;
     *)
         command -v qemu-aarch64 >/dev/null
@@ -57,15 +55,6 @@ case $(uname -m) in
             exit 1
         fi
         host_run() { QEMU_LD_PREFIX="$qemu_prefix" qemu-aarch64 "$@"; }
-        ndk_build_run() {
-            QEMU_LD_PREFIX="$qemu_prefix" qemu-aarch64 \
-                "$validation_root/qemu-exec-probe" /bin/sh \
-                "$package_root/ndk-build" "$@"
-        }
-        cmake_launcher_options=(
-            -DCMAKE_C_COMPILER_LAUNCHER=qemu-aarch64
-            -DCMAKE_CXX_COMPILER_LAUNCHER=qemu-aarch64
-        )
         ;;
 esac
 
@@ -256,10 +245,15 @@ host_run "$shader_tools/glslc" -c "$project_root/tests/simple.vert" \
     -o "$validation_root/simple.vert.spv"
 host_run "$shader_tools/spirv-val" "$validation_root/simple.vert.spv"
 host_run "$simpleperf_tools/simpleperf" --version
+python3 -B "$project_root/tests/simpleperf_scripts_test.py" --ndk "$package_root" -v
 host_run "$toolchain/python3/bin/python3.11" \
     "$project_root/tests/simpleperf_report_smoke.py" \
     "$simpleperf_tools/libsimpleperf_report.so" \
     "$project_root/sources/simpleperf-prebuilt/test/testdata/perf.data"
+host_run "$toolchain/python3/bin/python3.11" -B \
+    "$project_root/tests/simpleperf_scripts_smoke.py" "$package_root" \
+    "$project_root/sources/simpleperf-prebuilt/test/testdata/perf.data" \
+    "$validation_root/simpleperf-scripts"
 host_run "$project_root/build/simpleperf-report-linux-aarch64-gcc/rust_demangle_smoke"
 
 targets=(
@@ -286,30 +280,8 @@ for target in "${targets[@]}"; do
     file "$validation_root/hello-$target" "$validation_root/libhello-$target.so"
 done
 
-QEMU_LD_PREFIX="$qemu_prefix" cmake \
-    -S "$project_root/tests/cmake-smoke" \
-    -B "$validation_root/cmake-arm64-v8a" \
-    -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE="$package_root/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI=arm64-v8a \
-    -DANDROID_PLATFORM=android-21 \
-    -DANDROID_HOST_TAG=linux-aarch64 \
-    "${cmake_launcher_options[@]}"
-QEMU_LD_PREFIX="$qemu_prefix" cmake --build "$validation_root/cmake-arm64-v8a"
-file "$validation_root/cmake-arm64-v8a/libndk_arm64_cmake_smoke.so"
-
-(
-    cd "$project_root/tests/ndk-build-smoke"
-    ndk_build_run \
-        HOST_ARCH=aarch64 \
-        NDK_PROJECT_PATH=. \
-        NDK_APPLICATION_MK=jni/Application.mk \
-        NDK_OUT="$validation_root/ndk-build-obj" \
-        NDK_LIBS_OUT="$validation_root/ndk-build-libs"
-)
-find "$validation_root/ndk-build-libs" -type f -name '*.so' -print0 \
-    | sort -z | xargs -0 file
+QEMU_LD_PREFIX="$qemu_prefix" python3 -B "$project_root/tests/ndk_entrypoints_test.py" \
+    --ndk "$package_root" --runtime
 
 recursive_host_roots=(
     "$toolchain/bin"

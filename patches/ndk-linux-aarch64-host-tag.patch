@@ -1,12 +1,13 @@
 diff --git a/build/tools/ndk_bin_common.sh b/build/tools/ndk_bin_common.sh
 --- a/build/tools/ndk_bin_common.sh
 +++ b/build/tools/ndk_bin_common.sh
-@@ -27,7 +27,7 @@ esac
+@@ -27,7 +27,8 @@ esac
  
  HOST_ARCH=$(uname -m)
  case $HOST_ARCH in
 -  arm64) HOST_ARCH=arm64;;
-+  aarch64|arm64) HOST_ARCH=aarch64;;
++  arm64) if [ "$HOST_OS" = linux ]; then HOST_ARCH=aarch64; else HOST_ARCH=arm64; fi;;
++  aarch64) HOST_ARCH=aarch64;;
    i?86) HOST_ARCH=x86;;
    x86_64|amd64) HOST_ARCH=x86_64;;
    *) echo "ERROR: Unknown host CPU architecture: $HOST_ARCH"

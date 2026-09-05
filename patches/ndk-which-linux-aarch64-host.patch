@@ -1,0 +1,20 @@
+--- a/prebuilt/linux-aarch64/bin/ndk-which
++++ b/prebuilt/linux-aarch64/bin/ndk-which
+@@ -78,5 +78,7 @@
+ # This tool is installed in prebuilt/linux-x86_64/bin/.
+-MYNDKDIR=`dirname $0`/../../..
++MYNDKDIR=$(cd "$(dirname "$0")/../../.." && pwd)
++ANDROID_NDK_ROOT=$MYNDKDIR
++. "$MYNDKDIR/build/tools/ndk_bin_common.sh"
+
+ # create a temporary skeleton project so that we can leverage build-local.mk
+ TMPDIR=/tmp/ndk-which-$$
+@@ -91,5 +94,6 @@
+   if [ -z "$GNUMAKE" ] ; then
+-    GNUMAKE=make
++    GNUMAKE="$MYNDKDIR/prebuilt/$HOST_TAG/bin/make"
+   fi
+-  NDK_PROJECT_PATH=$TMPDIR $GNUMAKE --no-print-dir -f $MYNDKDIR/build/core/build-local.mk DUMP_$1 APP_ABI=$2
++  HOST_ARCH="$HOST_ARCH" NDK_PROJECT_PATH=$TMPDIR "$GNUMAKE" --no-print-dir \
++    -f "$MYNDKDIR/build/core/build-local.mk" DUMP_$1 APP_ABI=$2
+ }

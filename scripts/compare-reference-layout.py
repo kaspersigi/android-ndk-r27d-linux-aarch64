@@ -42,6 +42,10 @@ HOST_SCRIPT_DIFFERENCES = {
     "ndk-lldb",
     "ndk-stack",
     "ndk-which",
+    "simpleperf/simpleperf_utils.py",
+    "build/cmake/hooks/post/Android-Determine.cmake",
+    "prebuilt/linux-aarch64/bin/ndkgdb.pyz",
+    "prebuilt/linux-aarch64/bin/ndk-which",
 }
 
 HOST_SCRIPT_MANIFEST = (
