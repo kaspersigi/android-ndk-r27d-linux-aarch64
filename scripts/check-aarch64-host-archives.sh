@@ -6,16 +6,20 @@ project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 package_root=${1:-$project_root/dist/android-ndk-r27d}
 manifest=${2:-$project_root/manifests/ndk-host-archives.tsv}
 toolchain="$package_root/toolchains/llvm/prebuilt/linux-aarch64"
-archive_list=$(mktemp "$project_root/build/aarch64-host-archives.XXXXXX")
-audit_dir=$(mktemp -d "$project_root/build/aarch64-archive-audit.XXXXXX")
-bad_members=$(mktemp "$project_root/build/aarch64-bad-members.XXXXXX")
-member_list=$(mktemp "$project_root/build/aarch64-archive-members.XXXXXX")
-actual_manifest=$(mktemp "$project_root/build/aarch64-archive-manifest.XXXXXX")
+# Preflight runs before build/ exists. Keep scratch files independent of the
+# checkout and install the cleanup trap before creating anything inside it.
+temporary_dir=$(mktemp -d "${TMPDIR:-/tmp}/aarch64-host-archives.XXXXXX")
 cleanup() {
-    rm -rf -- "$audit_dir"
-    rm -f -- "$archive_list" "$bad_members" "$member_list" "$actual_manifest"
+    rm -rf -- "$temporary_dir"
 }
 trap cleanup EXIT
+archive_list="$temporary_dir/archives"
+audit_dir="$temporary_dir/audit"
+bad_members="$temporary_dir/bad-members"
+member_list="$temporary_dir/members"
+actual_manifest="$temporary_dir/manifest"
+mkdir "$audit_dir"
+: > "$actual_manifest"
 
 [[ -f "$manifest" ]] || {
     echo "Missing NDK host archive manifest: $manifest" >&2
