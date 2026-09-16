@@ -93,6 +93,11 @@ target_include_directories(ziparchive PUBLIC
   "${DEPS}/include")
 target_link_libraries(ziparchive PUBLIC android_base "${DEPS}/lib/libz.a")
 
+include("${CMAKE_CURRENT_LIST_DIR}/libdexfile.cmake")
+target_sources(unwindstack PRIVATE "${ROOT}/sources/system-unwinding/libunwindstack/DexFile.cpp")
+target_compile_definitions(unwindstack PRIVATE DEXFILE_SUPPORT)
+target_link_libraries(unwindstack PUBLIC dexfile)
+
 add_library(protobuf_lite STATIC IMPORTED GLOBAL)
 set_target_properties(protobuf_lite PROPERTIES
   IMPORTED_LOCATION "${ROOT}/out/simpleperf-deps-linux-aarch64/lib/libprotobuf-lite.a"
@@ -105,11 +110,11 @@ set(SIMPLEPERF_SOURCES
   kallsyms.cpp environment.cpp OfflineUnwinder.cpp MapRecordReader.cpp RegEx.cpp)
 list(TRANSFORM SIMPLEPERF_SOURCES PREPEND "${SIMPLEPERF}/")
 add_library(simpleperf_core STATIC ${SIMPLEPERF_SOURCES}
-  "${ROOT}/compat/simpleperf_dex_stubs.cpp"
+  "${SIMPLEPERF}/read_dex_file.cpp"
   "${GENERATED}/event_table.cpp"
   "${GENERATED}/system/extras/simpleperf/record_file.pb.cc")
 target_compile_definitions(simpleperf_core PUBLIC
-  NO_LIBDEXFILE_SUPPORT USE_BIONIC_UAPI_HEADERS)
+  USE_BIONIC_UAPI_HEADERS)
 target_include_directories(simpleperf_core PUBLIC
   "${SIMPLEPERF}"
   "${ROOT}/compat/include"
@@ -123,12 +128,12 @@ target_include_directories(simpleperf_core PUBLIC
   "${ROOT}/build/llvm-linux-aarch64/include"
   "${DEPS}/include")
 target_link_libraries(simpleperf_core PUBLIC android_base procinfo ziparchive unwindstack
-  lzma_sdk protobuf_lite "${ROOT}/out/simpleperf-linux-aarch64/libsimpleperf_readelf.a")
+  dexfile lzma_sdk protobuf_lite "${ROOT}/out/simpleperf-linux-aarch64/libsimpleperf_readelf.a")
 
 add_library(simpleperf_report SHARED "${SIMPLEPERF}/report_lib_interface.cpp")
 set_target_properties(simpleperf_report PROPERTIES OUTPUT_NAME simpleperf_report
   PREFIX "lib" LINK_FLAGS "-Wl,--gc-sections -Wl,--exclude-libs,ALL")
-target_link_options(simpleperf_report PRIVATE -static-libstdc++ -static-libgcc)
+target_link_options(simpleperf_report PRIVATE -static-libstdc++ -static-libgcc -Wl,--no-undefined)
 target_link_libraries(simpleperf_report PRIVATE simpleperf_core dl m rt pthread)
 
 add_executable(rust_demangle_smoke
@@ -140,3 +145,7 @@ target_include_directories(rust_demangle_smoke PRIVATE
 target_link_options(rust_demangle_smoke PRIVATE -static-libstdc++ -static-libgcc)
 target_link_libraries(rust_demangle_smoke PRIVATE
   "${ROOT}/out/simpleperf-linux-aarch64/libsimpleperf_readelf.a")
+
+add_executable(simpleperf_dex_smoke "${ROOT}/tests/simpleperf_dex_smoke.cpp")
+target_link_options(simpleperf_dex_smoke PRIVATE -static-libstdc++ -static-libgcc -Wl,--gc-sections)
+target_link_libraries(simpleperf_dex_smoke PRIVATE simpleperf_core dl m rt pthread)

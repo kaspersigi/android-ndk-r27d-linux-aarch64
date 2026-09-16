@@ -26,6 +26,12 @@ if [[ ! -f "$source_dir/CMakeLists.txt" ]]; then
 fi
 
 for required in \
+    "$host_deps/include/zlib.h" \
+    "$host_deps/lib/libz.a" \
+    "$host_deps/include/zstd.h" \
+    "$host_deps/lib/libzstd.a" \
+    "$host_deps/llvm-lzma/include/lzma.h" \
+    "$host_deps/llvm-lzma/lib/liblzma.a" \
     "$host_deps/lib/libedit.so" \
     "$host_deps/lib/libncurses.so" \
     "$host_deps/lib/libpanel.so" \
@@ -71,11 +77,11 @@ common_options=(
     -DLLVM_ENABLE_PLUGINS=ON
     -DLLVM_ENABLE_TERMINFO=OFF
     -DLLVM_ENABLE_Z3_SOLVER=OFF
-    -DLLVM_ENABLE_ZLIB=OFF
-    -DLLVM_ENABLE_ZSTD=OFF
     -DLLVM_INCLUDE_BENCHMARKS=OFF
     -DLLVM_INCLUDE_EXAMPLES=OFF
     -DLLVM_INCLUDE_TESTS=OFF
+    -DCLANG_DEFAULT_LINKER=lld
+    -DCLANG_DEFAULT_OBJCOPY=llvm-objcopy
     -DCLANG_INCLUDE_TESTS=OFF
     -DLLD_INCLUDE_TESTS=OFF
     -DPOLLY_INCLUDE_TESTS=OFF
@@ -85,20 +91,34 @@ common_options=(
     -DBUG_REPORT_URL=https://github.com/android-ndk/ndk/issues
 )
 
+# Build-only table generators do not consume Android compressed objects.
 cmake -S "$source_dir" -B "$native_build_dir" \
     "${common_options[@]}" \
     -DLLVM_ENABLE_PROJECTS=bolt\;clang\;clang-tools-extra\;lld\;polly \
+    -DLLVM_ENABLE_ZLIB=OFF \
+    -DLLVM_ENABLE_ZSTD=OFF \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++
 cmake --build "$native_build_dir" --parallel "$jobs" \
     --target llvm-tblgen clang-tblgen
 
+# FORCE_ON rejects missing compression support instead of silently disabling it.
+# Explicit archives avoid host-architecture discovery and new shared dependencies.
 cmake -S "$source_dir" -B "$cross_build_dir" \
     "${common_options[@]}" \
     -DLLVM_ENABLE_PROJECTS=bolt\;clang\;clang-tools-extra\;lld\;lldb\;polly \
     -DCMAKE_TOOLCHAIN_FILE="$toolchain_file" \
     -DCMAKE_INSTALL_PREFIX="$install_dir" \
     -DCMAKE_PREFIX_PATH="$host_deps;$target_python" \
+    -DLLVM_ENABLE_ZLIB=FORCE_ON \
+    -DZLIB_INCLUDE_DIR="$host_deps/include" \
+    -DZLIB_LIBRARY="$host_deps/lib/libz.a" \
+    -DZLIB_LIBRARY_RELEASE="$host_deps/lib/libz.a" \
+    -DLLVM_ENABLE_ZSTD=FORCE_ON \
+    -DLLVM_USE_STATIC_ZSTD=ON \
+    -Dzstd_INCLUDE_DIR="$host_deps/include" \
+    -Dzstd_LIBRARY="$host_deps/lib/libzstd.a" \
+    -Dzstd_STATIC_LIBRARY="$host_deps/lib/libzstd.a" \
     -DCMAKE_BUILD_RPATH="$host_deps/lib;$target_python/lib" \
     -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib;$ORIGIN/../python3/lib' \
     -DCMAKE_EXE_LINKER_FLAGS=-static-libgcc\ -static-libstdc++ \
@@ -114,7 +134,10 @@ cmake -S "$source_dir" -B "$cross_build_dir" \
     -DLLDB_ENABLE_LUA=OFF \
     -DLLDB_ENABLE_PYTHON=ON \
     -DLLDB_EMBED_PYTHON_HOME=OFF \
-    -DLLDB_ENABLE_LZMA=OFF \
+    -DLLDB_ENABLE_LZMA=ON \
+    -DLIBLZMA_INCLUDE_DIR="$host_deps/llvm-lzma/include" \
+    -DLIBLZMA_LIBRARY="$host_deps/llvm-lzma/lib/liblzma.a" \
+    -DLIBLZMA_LIBRARY_RELEASE="$host_deps/llvm-lzma/lib/liblzma.a" \
     -DLLDB_ENABLE_LIBEDIT=ON \
     -DLLDB_ENABLE_LIBXML2=ON \
     -DLLDB_ENABLE_CURSES=ON \

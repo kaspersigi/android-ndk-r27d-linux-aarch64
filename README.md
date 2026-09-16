@@ -179,11 +179,30 @@ The Linux AArch64 host package includes builds of:
 - bundled CPython 3.11 with LLDB Python bindings
 - GNU Make 4.3 and Yasm 1.3.0
 - shaderc, glslang, and SPIRV-Tools
-- Simpleperf report support
+- Simpleperf report support with statically linked ART DEX/CompactDex parsing
 - the musl compatibility helper required by the reference layout
 
 LLVM is built in two stages: native x86_64 table generators are created first,
 then the toolchain is cross-compiled for `aarch64-unknown-linux-gnu`.
+
+The [official build configuration](OFFICIAL_BUILD_CONFIG.md) records the
+version-pinned build command, feature options, dependency revisions, and
+remaining differences in this AArch64 port. Feature support follows that
+baseline; host paths and build optimization settings need separate adaptation.
+
+The shipped LLVM tools require Zlib and Zstd support. Both libraries are built
+for AArch64 with PIC and linked statically into LLVM, so this adds no external
+`libz.so` or `libzstd.so` dependency. Missing compression support fails LLVM
+configuration. The build uses the existing pinned Zstd source revision.
+
+LLDB also requires XZ/liblzma to read `.gnu_debugdata` (MiniDebugInfo). The
+XZ revision comes from this release's official LLVM `BUILD_INFO`; its PIC
+static library is embedded in LLDB, with no external `liblzma.so` dependency.
+A private dependency prefix keeps CPython from auto-enabling the `_lzma`
+extension absent from the official Python inventory. Missing liblzma fails
+configuration. Clang uses `ld.lld` and `llvm-objcopy`
+by default, matching the official driver configuration, including the
+external-assembler split-DWARF path.
 
 The compiler revisions match the revisions recorded in the official r27d
 `BUILD_INFO`:
@@ -197,6 +216,13 @@ The compiler revisions match the revisions recorded in the official r27d
 All other source revisions are also pinned in
 [`scripts/fetch-sources.sh`](scripts/fetch-sources.sh). Compatibility and host
 tag changes are maintained as reviewable files under [`patches/`](patches/).
+
+The native Simpleperf report library embeds `libdexfile` from ART and the
+matching JNI headers pinned by the r27d Simpleperf `repo.prop`. Both direct
+DEX symbol extraction and unwindstack DEX support are enabled. ART's host
+Palette implementation is used; no Android ART shared libraries are needed.
+Only the ART dependency uses C++17 because this revision still uses allocator
+members removed in C++20; Simpleperf itself remains C++20.
 
 ## Validation
 
@@ -216,11 +242,25 @@ or through QEMU on the supported x86_64 build host. It verifies:
   bindings;
 - GNU Make, Yasm, shader compilation, SPIR-V validation, and Simpleperf report
   processing, including legacy and Rust v0 symbol demangling;
+- Simpleperf DEX parsing through the actual file/memory reader and unwindstack:
+  the pinned VDEX fixture must yield 12,435 methods and the expected Java
+  method at its exact address/length; truncated data and invalid offsets
+  must fail without producing symbols;
 - Simpleperf Python host/LLVM tool discovery, default report-library loading,
   and actual `stackcollapse.py`, `gecko_profile_generator.py`, and
   `report_sample.py` conversion using the packaged AArch64 Python;
 - direct C and C++ linking for ARM, AArch64, x86, x86_64, and RISC-V Android
   targets;
+- static C/libc linking across the same targets, plus AArch64 API 35 with
+  `-O0 -static` and `-O3 -flto -static`. Explicit Zlib/Zstd-compressed DWARF
+  fixtures exercise objcopy, LLD input/output compression, and dwarfdump;
+  ELF checks reject dynamic executables or silently uncompressed fixtures;
+- AArch64 API 35 HWASan, ASan, UBSan, OpenMP, and profiling compile/link paths,
+  plus C++20 exceptions and ThinLTO with shared and static libc++; checks
+  inspect runtime symbols, profile sections, and `DT_NEEDED`;
+- Clang default tool selection and split-DWARF output, LLDB recovery of a
+  local symbol present only in XZ-compressed MiniDebugInfo, and expected
+  null-dereference diagnostics from both clang-tidy and scan-build;
 - Android CMake legacy, non-legacy (`ANDROID_USE_LEGACY_TOOLCHAIN_FILE=OFF`),
   and native (`CMAKE_SYSTEM_NAME=Android`) entry points: C/C++ configure,
   reconfigure, and linking for `arm64-v8a`, without a host-tag override;
@@ -251,6 +291,21 @@ The SDK repository runs the same entrypoint test with its bundled CMake
 working QEMU **and binfmt child execution**; shell/CMake uname is simulated,
 but `HOST_ARCH`/`ANDROID_HOST_TAG` are not forced. These gates are not evidence
 of native AArch64 device attachment, debugger sessions, or every Gradle project.
+
+### Static link failure with `ELFCOMPRESS_ZSTD`
+
+Older builds disabled LLVM's Zlib and Zstd support. Like r30, the official
+r27d `libc.a` contains Zstd-compressed debug sections, so `-static` can fail
+with `lld is not built with zstd support`, even when the application is
+compiled without `-g`. Dynamic libc links, including the usual HWASan build,
+do not exercise this archive path. Linking only libc++ statically does not
+test it either.
+
+The fix requires rebuilding and replacing the host toolchain; changing these
+scripts does not repair an already downloaded ZIP. Rebuild through
+`CLEAN=1 ./scripts/resolute-local-build.sh`. The official Android sysroot and
+its debug information remain unchanged. The static-link regression above
+runs as part of `validate-ndk.sh` and therefore gates release packaging.
 
 ## GitHub Actions release
 
@@ -288,9 +343,7 @@ android-ndk-r27d-linux.zip.sha256
   built to preserve the official file inventory.
 - The five reference paths containing `hwasan_aliases` are x86_64-specific;
   those paths contain the normal AArch64 HWASan implementation in this package.
-- Google's static Android AArch64 Simpleperf executable is reused. The native
-  AArch64 `libsimpleperf_report.so` is built without libdexfile, so it cannot
-  extract DEX symbols itself.
+- Google's static Android AArch64 Simpleperf executable is reused.
 - `musl/lib/libclang.so` is an AArch64 glibc-hosted compatibility copy, not a
   musl-hosted build. The primary glibc toolchain does not use this copy.
 

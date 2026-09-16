@@ -43,6 +43,21 @@ if ! grep -q '#include <cstdint>' \
       < "$project_root/patches/simpleperf-linux-aarch64-gcc.patch"
 fi
 
+# ART uses lock annotations that GCC cannot parse, and this revision's DEX
+# headers relied on libc++ to include cstdint transitively.
+if ! grep -q '#if defined(__clang__)' \
+    "$project_root/sources/system-libbase/include/android-base/thread_annotations.h"; then
+  git -C "$project_root/sources/system-libbase" apply \
+      "$project_root/patches/libbase-thread-annotations-gcc.patch"
+fi
+if ! grep -q '#include <cstdint>' \
+    "$project_root/sources/art/libdexfile/dex/dex_file_types.h" || \
+   ! grep -q '#include <cstdint>' \
+    "$project_root/sources/art/libdexfile/dex/invoke_type.h"; then
+  git -C "$project_root/sources/art" apply \
+      "$project_root/patches/libdexfile-include-cstdint.patch"
+fi
+
 cmake -S "$project_root/sources/protobuf" -B "$native_protobuf_build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS="-I$project_root/sources/protobuf/config" \
@@ -80,7 +95,7 @@ cmake -S "$project_root/cmake/simpleperf-linux-aarch64" -B "$build_dir" -G Ninja
     -DCMAKE_TOOLCHAIN_FILE="$gcc_toolchain" \
     -DNDK_PROJECT_ROOT="$project_root"
 cmake --build "$build_dir" --parallel "$jobs" \
-    --target simpleperf_report rust_demangle_smoke
+    --target simpleperf_report rust_demangle_smoke simpleperf_dex_smoke
 install -m 0755 "$build_dir/libsimpleperf_report.so" \
     "$install_dir/libsimpleperf_report.so"
 file "$install_dir/libsimpleperf_report.so"

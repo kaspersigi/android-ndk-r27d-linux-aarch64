@@ -20,6 +20,26 @@ Google's exact Android AArch64 r27d binary. This build does not reproduce
 Google's PGO/BOLT/MLGO optimization pipeline and is not byte-for-byte identical
 to an official NDK.
 
+LLVM requires Zlib and Zstd, linked from AArch64 PIC static archives so the
+host tools can read compressed debug sections without additional shared
+compression libraries. Static libc links cover all target architectures,
+including API 35 AArch64 with `-O3 -flto`; explicit Zlib/Zstd DWARF fixtures
+check compression and decompression in the rebuilt tools.
+
+LLDB enables XZ/liblzma from the official LLVM `BUILD_INFO` revision and links
+its PIC static archive. MiniDebugInfo validation requires recovery of a local
+symbol found only in `.gnu_debugdata`. Clang defaults to `ld.lld` and
+`llvm-objcopy`, including the external-assembler split-DWARF path.
+Additional validation compiles and links Android HWASan/ASan/UBSan, OpenMP,
+profiling, and shared/static libc++ with C++20 exceptions and ThinLTO, and
+requires real clang-tidy and scan-build diagnostics. These link checks do
+not establish Android-device runtime behavior.
+
+The native Simpleperf report library statically embeds the matching ART
+libdexfile parser, including unwindstack DEX support. Its VDEX regression
+checks 12,435 methods, a known method address/length, and invalid-input
+rejection. ART and JNI headers are pinned to Simpleperf repo.prop revisions.
+
 Simpleperf Python helpers select `bin/linux/aarch64` and the LLVM
 `linux-aarch64` host directory. Default report-library discovery and the
 stackcollapse, Gecko, and sample-report entry points are validated with the
@@ -51,7 +71,5 @@ Compatibility boundaries:
   DD in this revision; those paths are experimental builds. The five
   x86_64-only `hwasan_aliases` paths contain the standard AArch64 HWASan
   implementation.
-- The native Simpleperf report library is built without libdexfile, so it
-  cannot extract DEX symbols itself.
 - `musl/lib/libclang.so` is the glibc-hosted AArch64 libclang, not a
   musl-hosted build. The primary glibc toolchain does not use this copy.

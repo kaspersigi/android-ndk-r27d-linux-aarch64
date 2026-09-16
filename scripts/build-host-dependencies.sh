@@ -81,8 +81,8 @@ autoreconf -fi "$project_root/sources/libxcrypt"
 make -C "$libxcrypt_build" -j"$jobs"
 make -C "$libxcrypt_build" install
 
-# zlib is needed by CPython, LLDB and Simpleperf. Keep both shared and static
-# variants; packaged host tools may use the shared SONAME available on Linux.
+# Keep both zlib variants for the existing host dependencies. LLVM explicitly
+# links the PIC static archive so compression adds no host runtime dependency.
 cmake -S "$project_root/sources/zlib" -B "$build_root/zlib" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_TOOLCHAIN_FILE="$toolchain_file" \
@@ -91,6 +91,37 @@ cmake -S "$project_root/sources/zlib" -B "$build_root/zlib" -G Ninja \
     -DZLIB_BUILD_EXAMPLES=OFF
 cmake --build "$build_root/zlib" --parallel "$jobs"
 cmake --install "$build_root/zlib"
+
+# LLVM/LLD must decode compressed DWARF in Android archives (including libc.a).
+# Use PIC static zstd for both executables and LLVM/Clang/LLDB shared libraries.
+# This older Zstd declares CMake 2.8.12; allow it with the CMake 4 build baseline.
+cmake -S "$project_root/sources/zstd/build/cmake" -B "$build_root/zstd" -G Ninja \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE="$toolchain_file" \
+    -DCMAKE_INSTALL_PREFIX="$prefix" \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DZSTD_BUILD_STATIC=ON \
+    -DZSTD_BUILD_SHARED=OFF \
+    -DZSTD_BUILD_PROGRAMS=OFF \
+    -DZSTD_BUILD_TESTS=OFF \
+    -DZSTD_MULTITHREAD_SUPPORT=OFF
+cmake --build "$build_root/zstd" --parallel "$jobs"
+cmake --install "$build_root/zstd"
+
+# LLDB reads XZ-compressed .gnu_debugdata through liblzma. Build only the
+# PIC static library in a private prefix: exposing lzma.h/liblzma to CPython
+# would enable _lzma, which is absent from the official NDK Python inventory.
+cmake -S "$project_root/sources/xz" -B "$build_root/xz" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE="$toolchain_file" \
+    -DCMAKE_INSTALL_PREFIX="$prefix/llvm-lzma" \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build "$build_root/xz" --parallel "$jobs" --target liblzma
+cmake --install "$build_root/xz" --component liblzma_Development
 
 build_ncurses() {
     local suffix=$1

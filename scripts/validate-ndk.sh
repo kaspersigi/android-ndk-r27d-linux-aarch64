@@ -38,11 +38,13 @@ while IFS= read -r -d '' extension; do
 done < <(find "$toolchain/python3/lib/python3.11/lib-dynload" \
     -type f -name '*.so' -print0)
 
+host_runner=()
 case $(uname -m) in
     aarch64|arm64)
         host_run() { "$@"; }
         ;;
     *)
+        host_runner=(qemu-aarch64)
         command -v qemu-aarch64 >/dev/null
         command -v aarch64-linux-gnu-gcc >/dev/null
         aarch64-linux-gnu-gcc "$project_root/tests/qemu_exec_probe.c" \
@@ -255,6 +257,8 @@ host_run "$toolchain/python3/bin/python3.11" -B \
     "$project_root/sources/simpleperf-prebuilt/test/testdata/perf.data" \
     "$validation_root/simpleperf-scripts"
 host_run "$project_root/build/simpleperf-report-linux-aarch64-gcc/rust_demangle_smoke"
+host_run "$project_root/build/simpleperf-report-linux-aarch64-gcc/simpleperf_dex_smoke" \
+    "$project_root/sources/system-extras/simpleperf/testdata/base.vdex"
 
 targets=(
     armv7a-linux-androideabi21
@@ -263,6 +267,16 @@ targets=(
     x86_64-linux-android21
     riscv64-linux-android35
 )
+# Dynamic linking and -static-libstdc++ do not cover libc.a's compressed DWARF.
+QEMU_LD_PREFIX="$qemu_prefix" python3 -B "$project_root/tests/android_static_link_test.py" \
+    --toolchain "$toolchain" --output "$validation_root/static" \
+    --runner "${host_runner[@]}" --targets "${targets[@]}"
+
+# Optional host features must work on real inputs, not only report a version.
+QEMU_LD_PREFIX="$qemu_prefix" python3 -B "$project_root/tests/toolchain_features_test.py" \
+    --toolchain "$toolchain" --output "$validation_root/features" \
+    --runner "${host_runner[@]}"
+
 for target in "${targets[@]}"; do
     host_run "$toolchain/bin/clang" \
         --target="$target" \

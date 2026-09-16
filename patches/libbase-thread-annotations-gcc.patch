@@ -1,0 +1,16 @@
+diff --git a/include/android-base/thread_annotations.h b/include/android-base/thread_annotations.h
+index 53fe6da..5523521 100644
+--- a/include/android-base/thread_annotations.h
++++ b/include/android-base/thread_annotations.h
+@@ -18,7 +18,11 @@
+
+ #include <mutex>
+
++#if defined(__clang__)
+ #define THREAD_ANNOTATION_ATTRIBUTE__(x) __attribute__((x))
++#else
++#define THREAD_ANNOTATION_ATTRIBUTE__(x)
++#endif
+
+ #define CAPABILITY(x) \
+       THREAD_ANNOTATION_ATTRIBUTE__(capability(x))

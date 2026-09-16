@@ -106,6 +106,11 @@ checkout_commit \
     https://android.googlesource.com/platform/external/zlib \
     "$project_root/sources/zlib" \
     ad56eadd4af7749614d803c48c6aaba92461011f
+# liblzma revision from the official r27d LLVM BUILD_INFO.
+checkout_commit \
+    https://android.googlesource.com/toolchain/xz \
+    "$project_root/sources/xz" \
+    47426872d1366c32538a8e9c8f559b03cb45b648
 checkout_commit \
     https://android.googlesource.com/platform/external/zstd \
     "$project_root/sources/zstd" \
@@ -122,6 +127,15 @@ checkout_commit \
     https://android.googlesource.com/platform/prebuilts/simpleperf \
     "$project_root/sources/simpleperf-prebuilt" \
     ec4d791d52db4e98eba9544c1b865215d29b6634
+# ART and JNI headers from the matching Simpleperf repo.prop.
+checkout_commit \
+    https://android.googlesource.com/platform/art \
+    "$project_root/sources/art" \
+    3c576baf0a6caf71b359079cbd27c56d4036cb24
+checkout_commit \
+    https://android.googlesource.com/platform/libnativehelper \
+    "$project_root/sources/libnativehelper" \
+    99d195985eb3f9b5de83b3cad6bc153de6fbdccb
 checkout_commit \
     https://android.googlesource.com/platform/system/extras \
     "$project_root/sources/system-extras" \
